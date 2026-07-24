@@ -25,8 +25,20 @@ pymysql.install_as_MySQLdb()
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DEBUG")
 
-# Add more development-friendly hosts
-ALLOWED_HOSTS = ["pas.com.ng", "www.pas.com.ng", "localhost", "127.0.0.1"]
+# Hosts are environment-driven so a deploy does not require a code change.
+# Getting this wrong returns HTTP 400 for EVERY request, with a message that
+# does not obviously point at ALLOWED_HOSTS.
+ALLOWED_HOSTS = env.list(
+    "ALLOWED_HOSTS",
+    default=["pass247.net", "www.pass247.net", "localhost", "127.0.0.1"],
+)
+
+# Render injects the service's public hostname at runtime. Adding it
+# automatically means the app works on the first deploy, before you know the
+# generated *.onrender.com address.
+RENDER_EXTERNAL_HOSTNAME = env("RENDER_EXTERNAL_HOSTNAME", default="")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 # -------------------------------------------------
 # Installed Apps src/components/Interview/InterviewLevels.jsx
@@ -88,14 +100,25 @@ MIDDLEWARE = [
 # -------------------------------------------------
 # CORS Settings for React Development
 # -------------------------------------------------
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React default dev port
+# Local dev origins are always allowed; production origins come from the
+# environment so a new deploy URL does not require a code change.
+# NOTE: this is the origin the BROWSER loads the app from (the Vite dev
+# server, or the deployed frontend) — not the port Django itself runs on.
+_LOCAL_ORIGINS = [
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173",  # Vite default dev port
+    "http://localhost:5173",   # Vite dev server
     "http://127.0.0.1:5173",
-    "http://localhost:8000",  # Django default port
+    "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
 ]
+
+CORS_ALLOWED_ORIGINS = env.list(
+    "CORS_ALLOWED_ORIGINS",
+    default=["https://pass247.net", "https://www.pass247.net"],
+) + (_LOCAL_ORIGINS if DEBUG else [])
 
 # Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
@@ -135,16 +158,16 @@ CSRF_COOKIE_SAMESITE = 'Lax'  # Required for cross-origin requests
 # CSRF_COOKIE_SECURE is set conditionally below, in the Security Settings section
 CSRF_COOKIE_PATH = '/'
 CSRF_USE_SESSIONS = False  # Store CSRF token in cookie, not session
-CSRF_TRUSTED_ORIGINS = [
-    "https://www.pas.com.ng",
-    "https://pas.com.ng",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-]
+# Must include every origin that submits forms/POSTs, or Django rejects them
+# with 403. On Render the *.onrender.com host is added automatically below.
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["https://pass247.net", "https://www.pass247.net"],
+) + (_LOCAL_ORIGINS if DEBUG else [])
+
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+    CORS_ALLOWED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 
 # -------------------------------------------------
 # Session Settings
@@ -235,10 +258,25 @@ REST_FRAMEWORK = {
 # -------------------------------------------------
 # Using SQLite for local development
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    # Driven by DATABASE_URL, falling back to SQLite for local development.
+    #
+    # This matters on any platform with an ephemeral filesystem (Render,
+    # Heroku, Fly, most containers): a SQLite file lives on disk, and that
+    # disk is recreated on every deploy and every restart. Users, payments,
+    # questions and exam sessions would silently vanish each time you push.
+    #
+    # SQLite also serialises writes, so concurrent submissions during a timed
+    # exam produce "database is locked" errors even before deploys wipe it.
+    #
+    # On Render: create a Postgres instance and set DATABASE_URL to its
+    # Internal Database URL. conn_max_age reuses connections across requests;
+    # ssl_require is on whenever a real DATABASE_URL is supplied.
+    'default': dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+        conn_health_checks=True,
+        ssl_require=bool(env('DATABASE_URL', default='')),
+    )
 }
 
 # MySQL configuration (commented out for now)
@@ -300,7 +338,17 @@ if REACT_APP_DIR.exists():
     STATICFILES_DIRS.append(REACT_APP_DIR / "static")
 
 # Static files storage
-STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+# WhiteNoise is already in MIDDLEWARE, but was paired with Django's plain
+# storage backend — so static files were served uncompressed and without
+# cache-busting hashes. CompressedManifestStaticFilesStorage adds both.
+#
+# Kept off in DEBUG: the manifest backend raises if a referenced file is
+# missing from the manifest, which breaks the dev server before you have run
+# collectstatic.
+if DEBUG:
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+else:
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Cloudinary for media uploads
 CLOUDINARY_STORAGE = {
@@ -344,9 +392,8 @@ PAYSTACK_INITIALIZE_PAYMENT_URL = env("PAYSTACK_INITIALIZE_PAYMENT_URL")
 PAYSTACK_VERIFY_URL = env("PAYSTACK_VERIFY_URL")
 
 # -------------------------------------------------
-# Email Configuration - Use console backend for development
+# Email Configuration - environment driven
 # -------------------------------------------------
-
 APP_DISPLAY_NAME = env("APP_DISPLAY_NAME", default="PAS")
 
 # NOTE ON EMAIL_HOST: this must match a name on the mail server's TLS
@@ -359,7 +406,7 @@ APP_DISPLAY_NAME = env("APP_DISPLAY_NAME", default="PAS")
 #   openssl s_client -connect <host>:465 </dev/null 2>/dev/null \
 #     | openssl x509 -noout -subject -ext subjectAltName
 EMAIL_HOST = env("EMAIL_HOST", default="da34.host-ww.net")
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_PORT = env.int("EMAIL_PORT", default=465)
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="noreply@pass247.net")
@@ -382,7 +429,6 @@ EMAIL_BACKEND = env(
     default=("django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST_PASSWORD
              else "django.core.mail.backends.console.EmailBackend"),
 )
-
 
 # -------------------------------------------------
 # Celery (optional) - Disable for development if not needed
@@ -493,11 +539,13 @@ if not LOGS_DIR.exists():
 # Base URL for API (useful for React environment variables)
 API_BASE_URL = '/api'
 
-# Frontend URL (for email links, etc.)
-if DEBUG:
-    FRONTEND_URL = 'http://localhost:3000'
-else:
-    FRONTEND_URL = 'https://pas.com.ng'
+# Frontend URL — used to build password-reset links in emails.
+# Wrong value here sends users to a dead link, and the failure is invisible
+# server-side. The dev default matches the Vite dev server port, not 3000.
+FRONTEND_URL = env(
+    "FRONTEND_URL",
+    default="http://localhost:5173" if DEBUG else "https://pass247.net",
+)
 
 # -------------------------------------------------
 # Cache settings (optional)

@@ -353,7 +353,7 @@ def api_forgot_password(request):
                 None,  # Django falls back to settings.DEFAULT_FROM_EMAIL
                 [email]
             )
-            email_message.fail_silently = True
+            email_message.fail_silently = False  # see note in send_signup_otp
             email_message.send()
         except Exception as e:
             # Don't fail the request just because email delivery had an issue -
@@ -464,11 +464,20 @@ def send_signup_otp(user):
             None,  # Django falls back to settings.DEFAULT_FROM_EMAIL
             [user.email],
         )
-        message.fail_silently = True
+        # fail_silently MUST be False. With True, Django swallows SMTP
+        # errors internally, send() never raises, and the except block below
+        # never runs — so a misconfigured mail server produces complete
+        # silence. Letting it raise here means the error is logged, while the
+        # except still stops a mail failure from breaking signup.
+        message.fail_silently = False
         message.send()
+        logging.getLogger(__name__).info(
+            f"Signup OTP email sent to user {user.pk} <{user.email}>"
+        )
     except Exception as exc:
         logging.getLogger(__name__).error(
-            f"Signup OTP email failed for user {user.pk}: {exc}"
+            f"Signup OTP email FAILED for user {user.pk} <{user.email}>: "
+            f"{type(exc).__name__}: {exc}"
         )
     return otp
 

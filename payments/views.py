@@ -339,7 +339,7 @@ def send_payment_confirmation_email(payment):
     • Progress tracking
     • Mock exams
     
-    Start practicing now: https://pas.com.ng/exams
+    Start practicing now: https://pass247.net/exams
     
     Best regards,
     The PAS Team

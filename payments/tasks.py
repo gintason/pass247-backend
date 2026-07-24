@@ -14,7 +14,7 @@ def send_expiry_notifications():
         send_mail(
             "Your Subscription is Expiring Soon!",
             "Hello, your PAS subscription will expire in 5 days. Renew now to maintain access!",
-            "admin@pas.com.ng",
+            "admin@pass247.net",
             [payment.email],
             fail_silently=True,
         )
