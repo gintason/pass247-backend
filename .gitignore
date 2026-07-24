@@ -1,9 +1,74 @@
-venv/
+# ---------------------------------------------------------------------------
+# Secrets — NEVER commit. Git history keeps files even after deletion, so a
+# single accidental commit means rotating every key in them.
+# ---------------------------------------------------------------------------
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
 __pycache__/
-*.pyc
-*.sqlite3
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+django_deps/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Django
+# ---------------------------------------------------------------------------
+*.log
+logs/
 db.sqlite3
-.DS_Store
+db.sqlite3-journal
+*.sqlite3
+# Collected output of `collectstatic` — regenerate at deploy time.
 staticfiles/
+# User uploads. These belong in Cloudinary/S3, not the repo.
+media/
+# Fixture dumps often contain real user data — commit deliberately, not by default.
+data.json
+*.dump
+
+# ---------------------------------------------------------------------------
+# Node / frontend
+# ---------------------------------------------------------------------------
 node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ---------------------------------------------------------------------------
+# Working files — backups, archives and one-off diagnostic scripts
+# ---------------------------------------------------------------------------
+*.zip
+*_backup_*/
+*.bak
+*.rescue_*
+email_test.py
+check_routes.py
+smtp_test.py
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~

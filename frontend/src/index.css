@@ -1,0 +1,146 @@
+/* ==========================================================================
+   Pass24/7 — Base layer
+
+   NOTE: this file previously still contained the Vite starter scaffold,
+   which pinned #root to a fixed 1126px with `text-align: center` and side
+   borders, and shipped a `prefers-color-scheme: dark` block that fought
+   Bootstrap for anyone whose OS is in dark mode. Both affected every page
+   in the app. Replaced with a proper base layer.
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  font-family: var(--pas-font-body);
+  font-size: var(--pas-text-base);
+  line-height: var(--pas-leading-normal);
+  color: var(--pas-slate);
+  background: var(--pas-surface);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+/* The app owns its own widths per-section; #root must not constrain them. */
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+/* ---- Headings ---------------------------------------------------------- */
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 var(--pas-space-3);
+  font-family: var(--pas-font-display);
+  font-weight: 700;
+  line-height: var(--pas-leading-tight);
+  letter-spacing: var(--pas-tracking-tight);
+  color: var(--pas-ink);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--pas-text-4xl); }
+h2 { font-size: var(--pas-text-3xl); }
+h3 { font-size: var(--pas-text-2xl); }
+h4 { font-size: var(--pas-text-xl); }
+h5 { font-size: var(--pas-text-lg); font-weight: 600; }
+h6 { font-size: var(--pas-text-base); font-weight: 600; }
+
+p { margin: 0 0 var(--pas-space-4); }
+p:last-child { margin-bottom: 0; }
+
+/* Long-form content — exam questions, explanations, study notes, blog.
+   Slightly looser leading and a capped measure, because this is where
+   people actually read rather than scan. */
+.pas-prose {
+  max-width: 68ch;
+  line-height: var(--pas-leading-relaxed);
+  font-size: var(--pas-text-lg);
+}
+
+a {
+  color: var(--pas-indigo);
+  text-decoration-color: color-mix(in srgb, var(--pas-indigo) 35%, transparent);
+  text-underline-offset: 0.18em;
+  transition: color var(--pas-duration-fast) var(--pas-ease);
+}
+a:hover { color: var(--pas-indigo-deep); }
+
+/* ---- Data numerals ------------------------------------------------------
+   Timers, scores and counts use tabular figures so digits keep a constant
+   width. Without this a live countdown visibly jitters as digits change. */
+.pas-data,
+.pas-timer,
+.pas-score {
+  font-family: var(--pas-font-data);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Accessibility floor ------------------------------------------------ */
+
+:focus-visible {
+  outline: 2px solid var(--pas-indigo);
+  outline-offset: 2px;
+  border-radius: var(--pas-radius-sm);
+}
+:focus:not(:focus-visible) { outline: none; }
+
+.pas-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: var(--pas-space-2);
+  z-index: 10000;
+  padding: var(--pas-space-3) var(--pas-space-4);
+  background: var(--pas-ink);
+  color: var(--pas-white);
+  border-radius: var(--pas-radius-sm);
+}
+.pas-skip-link:focus { left: var(--pas-space-2); }
+
+::selection {
+  background: color-mix(in srgb, var(--pas-indigo) 22%, transparent);
+  color: var(--pas-ink);
+}
+
+img, svg, video { max-width: 100%; height: auto; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--pas-line);
+  opacity: 1;
+  margin: var(--pas-space-6) 0;
+}
+
+/* Scrollbar — quiet, brand-tinted, desktop only */
+@media (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: var(--pas-line) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--pas-line);
+    border-radius: var(--pas-radius-pill);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--pas-muted); background-clip: content-box; }
+}

@@ -1,0 +1,365 @@
+/* ==========================================================================
+   Pass24/7 — Auth screens (sign in, sign up, verify, reset) and Dashboard
+   Built on the design tokens. These components carry no inline <style>
+   blocks, so ordinary specificity applies and nothing needs !important.
+   ========================================================================== */
+
+/* ---- Shell --------------------------------------------------------------
+   A split layout: brand panel on the left, form on the right. The brand
+   panel collapses away below lg so the form gets the full width on mobile
+   rather than being squeezed under a decorative block. */
+
+.auth-shell {
+  min-block-size: 100svh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background: var(--pas-mist);
+}
+
+@media (min-width: 992px) {
+  .auth-shell { grid-template-columns: 1.05fr 1fr; }
+}
+
+/* Plain variant — white throughout, no brand panel, form centred on the
+   page. Used by Register; Login and VerifyEmail keep the split layout. */
+.auth-shell--plain {
+  grid-template-columns: 1fr;
+  background: var(--pas-white);
+}
+
+.auth-shell--plain .auth-main {
+  background: var(--pas-white);
+  padding-block: clamp(2rem, 5vw, 4rem);
+}
+
+@media (min-width: 992px) {
+  /* Override the split layout inherited from .auth-shell */
+  .auth-shell--plain { grid-template-columns: 1fr; }
+}
+
+/* Brand side */
+.auth-aside {
+  display: none;
+  position: relative;
+  padding: var(--pas-space-8) var(--pas-space-7);
+  background: var(--pas-ink);
+  color: rgba(255, 255, 255, 0.82);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+@media (min-width: 992px) {
+  .auth-aside { display: flex; flex-direction: column; justify-content: space-between; }
+}
+
+.auth-aside::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(58% 70% at 22% 18%, rgba(68, 0, 255, 0.55) 0%, transparent 62%),
+    radial-gradient(46% 58% at 86% 84%, rgba(255, 193, 0, 0.18) 0%, transparent 60%);
+}
+
+.auth-aside-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pas-space-3);
+  font-family: var(--pas-font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--pas-white);
+  text-decoration: none;
+}
+
+.auth-aside-title {
+  font-family: var(--pas-font-display);
+  font-size: clamp(1.9rem, 1.2rem + 1.6vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: var(--pas-tracking-tight);
+  color: var(--pas-white);
+  text-wrap: balance;
+  max-inline-size: 16ch;
+  margin-bottom: var(--pas-space-4);
+}
+
+.auth-aside-copy {
+  font-size: var(--pas-text-lg);
+  line-height: var(--pas-leading-normal);
+  max-inline-size: 42ch;
+  margin-bottom: 0;
+}
+
+/* Signature: the answer-sheet option marker, used as a proof-point list.
+   The content genuinely is multiple choice, so the marker carries meaning
+   rather than decorating. */
+.auth-points { list-style: none; margin: var(--pas-space-6) 0 0; padding: 0; }
+
+.auth-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pas-space-3);
+  margin-bottom: var(--pas-space-4);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.auth-points li::before {
+  content: counter(auth-point, upper-alpha);
+  counter-increment: auth-point;
+  display: grid;
+  place-items: center;
+  inline-size: 1.9rem;
+  block-size: 1.9rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--pas-font-data);
+  font-size: 0.82rem;
+  color: var(--pas-gold);
+}
+
+.auth-points { counter-reset: auth-point; }
+
+/* ---- Form side ---------------------------------------------------------- */
+
+.auth-main {
+  display: grid;
+  place-items: center;
+  padding: var(--pas-space-6) clamp(1rem, 5vw, 3rem);
+  background: var(--pas-surface);
+}
+
+.auth-card {
+  inline-size: 100%;
+  max-inline-size: 440px;
+}
+
+.auth-card--wide { max-inline-size: 560px; }
+
+.auth-eyebrow {
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--pas-tracking-wide);
+  color: var(--pas-indigo-deep);
+  margin-bottom: var(--pas-space-2);
+}
+
+.auth-title {
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-2xl);
+  font-weight: 700;
+  letter-spacing: var(--pas-tracking-tight);
+  color: var(--pas-ink);
+  margin-bottom: var(--pas-space-2);
+}
+
+.auth-subtitle {
+  color: var(--pas-slate);
+  margin-bottom: var(--pas-space-6);
+}
+
+.auth-form .form-label { margin-bottom: var(--pas-space-2); }
+.auth-form .form-control { margin-bottom: var(--pas-space-1); }
+.auth-form .mb-3 { margin-bottom: var(--pas-space-4) !important; }
+
+.auth-submit {
+  inline-size: 100%;
+  margin-top: var(--pas-space-2);
+}
+
+.auth-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pas-space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--pas-space-4);
+  font-size: var(--pas-text-sm);
+}
+
+.auth-alt {
+  margin-top: var(--pas-space-5);
+  padding-top: var(--pas-space-5);
+  border-top: 1px solid var(--pas-line);
+  text-align: center;
+  color: var(--pas-slate);
+  font-size: var(--pas-text-sm);
+}
+
+.auth-alt a { font-weight: 600; }
+
+/* Password strength hint */
+.auth-hint {
+  display: block;
+  font-size: var(--pas-text-sm);
+  color: var(--pas-muted);
+  margin-top: var(--pas-space-1);
+}
+
+/* ---- OTP entry ----------------------------------------------------------
+   Mono with wide tracking so the six digits read as discrete characters,
+   and tabular figures so the field doesn't reflow as digits are typed. */
+
+.otp-input {
+  inline-size: 100%;
+  text-align: center;
+  font-family: var(--pas-font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.2rem);
+  font-weight: 500;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;  /* re-centres text that letter-spacing pushes left */
+  padding: var(--pas-space-4) var(--pas-space-3);
+  border: 1px solid var(--pas-line);
+  border-radius: var(--pas-radius);
+  background: var(--pas-mist);
+  color: var(--pas-ink);
+}
+
+.otp-input:focus {
+  outline: none;
+  border-color: var(--pas-indigo);
+  box-shadow: var(--pas-shadow-focus);
+  background: var(--pas-surface);
+}
+
+.otp-input::placeholder { color: var(--pas-line); letter-spacing: 0.5em; }
+
+.otp-sent-to {
+  display: inline-block;
+  font-family: var(--pas-font-data);
+  font-size: var(--pas-text-sm);
+  color: var(--pas-ink);
+  background: var(--pas-mist);
+  border: 1px solid var(--pas-line);
+  border-radius: var(--pas-radius-pill);
+  padding: 0.25rem 0.75rem;
+}
+
+.otp-resend {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+  font-size: var(--pas-text-sm);
+  color: var(--pas-indigo);
+  cursor: pointer;
+}
+.otp-resend:disabled { color: var(--pas-muted); cursor: default; }
+
+/* ==========================================================================
+   Dashboard
+   ========================================================================== */
+
+.dash {
+  background: var(--pas-mist);
+  min-block-size: 100svh;
+  padding-block: var(--pas-space-6) var(--pas-space-8);
+}
+
+.dash-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--pas-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--pas-space-6);
+}
+
+.dash-greeting {
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-2xl);
+  font-weight: 700;
+  letter-spacing: var(--pas-tracking-tight);
+  color: var(--pas-ink);
+  margin-bottom: var(--pas-space-1);
+}
+
+.dash-sub { color: var(--pas-slate); margin-bottom: 0; }
+
+/* Stat tiles — the number is the content, so it leads and uses the data face */
+.dash-stat {
+  block-size: 100%;
+  padding: var(--pas-space-5);
+  background: var(--pas-surface);
+  border: 1px solid var(--pas-line);
+  border-radius: var(--pas-radius-lg);
+  box-shadow: var(--pas-shadow-sm);
+  transition: box-shadow var(--pas-duration) var(--pas-ease),
+              transform var(--pas-duration) var(--pas-ease);
+}
+.dash-stat:hover { box-shadow: var(--pas-shadow-md); transform: translateY(-2px); }
+
+.dash-stat-label {
+  display: block;
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--pas-tracking-wide);
+  color: var(--pas-muted);
+  margin-bottom: var(--pas-space-2);
+}
+
+.dash-stat-value {
+  font-family: var(--pas-font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.7rem, 1.3rem + 1.2vw, 2.3rem);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--pas-ink);
+}
+
+.dash-stat-unit { font-size: 0.5em; color: var(--pas-muted); margin-left: 0.15em; }
+
+.dash-stat-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 42px;
+  block-size: 42px;
+  border-radius: var(--pas-radius-sm);
+  background: color-mix(in srgb, var(--pas-indigo) 9%, transparent);
+  color: var(--pas-indigo);
+  font-size: 1.15rem;
+  margin-bottom: var(--pas-space-4);
+}
+
+.dash-panel {
+  background: var(--pas-surface);
+  border: 1px solid var(--pas-line);
+  border-radius: var(--pas-radius-lg);
+  box-shadow: var(--pas-shadow-sm);
+  padding: var(--pas-space-5);
+  block-size: 100%;
+}
+
+.dash-panel-title {
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-lg);
+  font-weight: 700;
+  color: var(--pas-ink);
+  margin-bottom: var(--pas-space-4);
+}
+
+/* Empty states are an invitation to act, not a shrug */
+.dash-empty { text-align: center; padding: var(--pas-space-7) var(--pas-space-4); }
+.dash-empty i { font-size: 2rem; color: var(--pas-line); display: block; margin-bottom: var(--pas-space-3); }
+.dash-empty p { color: var(--pas-slate); margin-bottom: var(--pas-space-4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-stat:hover { transform: none; }
+}
+
+/* Dashboard header actions — wrap on narrow screens rather than overflow */
+.dash-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--pas-space-2);
+  flex-wrap: wrap;
+}

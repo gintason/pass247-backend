@@ -1,0 +1,527 @@
+/* ==========================================================================
+   Pass24/7 — Theme layer
+
+   Restyles Bootstrap app-wide. Bootstrap 5.3 is CSS-variable driven, so this
+   overrides its own --bs-* API rather than fighting selector specificity.
+   That keeps this file low-specificity and means it reaches every page that
+   uses Bootstrap classes — which is all of them.
+
+   Load order matters: bootstrap.min.css -> tokens.css -> theme.css
+   ========================================================================== */
+
+:root {
+  /* ---- Map the brand onto Bootstrap's global tokens ---- */
+  --bs-primary: var(--pas-indigo);
+  --bs-primary-rgb: 68, 0, 255;
+  --bs-secondary: var(--pas-gold);
+  --bs-secondary-rgb: 255, 193, 0;
+  --bs-success: var(--pas-success);
+  --bs-danger: var(--pas-danger);
+  --bs-warning: var(--pas-warn);
+  --bs-info: var(--pas-info);
+  --bs-light: var(--pas-mist);
+  --bs-dark: var(--pas-ink);
+
+  --bs-body-font-family: var(--pas-font-body);
+  --bs-body-font-size: var(--pas-text-base);
+  --bs-body-line-height: var(--pas-leading-normal);
+  --bs-body-color: var(--pas-slate);
+  --bs-body-bg: var(--pas-surface);
+  --bs-emphasis-color: var(--pas-ink);
+  --bs-secondary-color: var(--pas-muted);
+  --bs-border-color: var(--pas-line);
+  --bs-link-color: var(--pas-indigo);
+  --bs-link-hover-color: var(--pas-indigo-deep);
+
+  --bs-border-radius: var(--pas-radius);
+  --bs-border-radius-sm: var(--pas-radius-sm);
+  --bs-border-radius-lg: var(--pas-radius-lg);
+  --bs-border-radius-xl: var(--pas-radius-lg);
+  --bs-border-radius-pill: var(--pas-radius-pill);
+
+  --bs-box-shadow-sm: var(--pas-shadow-sm);
+  --bs-box-shadow: var(--pas-shadow-md);
+  --bs-box-shadow-lg: var(--pas-shadow-lg);
+}
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+
+.container,
+.container-fluid,
+.container-lg,
+.container-xl {
+  --bs-gutter-x: clamp(1rem, 0.5rem + 2vw, 2rem);
+}
+
+.container,
+.container-lg,
+.container-xl {
+  max-width: min(100%, var(--pas-container));
+}
+
+/* Vertical rhythm helper — consistent section pacing */
+.pas-section { padding-block: var(--pas-section-y); }
+.pas-section--sunken { background: var(--pas-surface-sunken); }
+.pas-section--ink {
+  background: var(--pas-ink);
+  color: color-mix(in srgb, var(--pas-white) 78%, transparent);
+}
+.pas-section--ink h1,
+.pas-section--ink h2,
+.pas-section--ink h3 { color: var(--pas-white); }
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.btn {
+  --bs-btn-padding-y: 0.65rem;
+  --bs-btn-padding-x: 1.35rem;
+  --bs-btn-font-family: var(--pas-font-display);
+  --bs-btn-font-weight: 600;
+  --bs-btn-font-size: 0.95rem;
+  --bs-btn-border-radius: var(--pas-radius-pill);
+  letter-spacing: -0.005em;
+  transition:
+    transform var(--pas-duration-fast) var(--pas-ease),
+    box-shadow var(--pas-duration) var(--pas-ease),
+    background-color var(--pas-duration-fast) var(--pas-ease),
+    border-color var(--pas-duration-fast) var(--pas-ease),
+    color var(--pas-duration-fast) var(--pas-ease);
+}
+
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { box-shadow: var(--pas-shadow-focus); outline: none; }
+
+.btn-lg {
+  --bs-btn-padding-y: 0.9rem;
+  --bs-btn-padding-x: 2rem;
+  --bs-btn-font-size: 1.05rem;
+}
+.btn-sm {
+  --bs-btn-padding-y: 0.4rem;
+  --bs-btn-padding-x: 1rem;
+  --bs-btn-font-size: 0.85rem;
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--pas-indigo);
+  --bs-btn-border-color: var(--pas-indigo);
+  --bs-btn-hover-bg: var(--pas-indigo-deep);
+  --bs-btn-hover-border-color: var(--pas-indigo-deep);
+  --bs-btn-active-bg: var(--pas-indigo-deep);
+  --bs-btn-active-border-color: var(--pas-indigo-deep);
+  --bs-btn-disabled-bg: color-mix(in srgb, var(--pas-indigo) 45%, var(--pas-white));
+  --bs-btn-disabled-border-color: transparent;
+  box-shadow: 0 6px 16px rgba(68, 0, 255, 0.22);
+}
+.btn-primary:hover { box-shadow: 0 10px 24px rgba(68, 0, 255, 0.3); }
+
+/* Gold is the achievement colour — upgrade, unlock, celebrate.
+   Dark ink text on gold, because white on #ffc100 fails contrast. */
+.btn-warning,
+.btn-secondary {
+  --bs-btn-color: var(--pas-ink);
+  --bs-btn-bg: var(--pas-gold);
+  --bs-btn-border-color: var(--pas-gold);
+  --bs-btn-hover-color: var(--pas-ink);
+  --bs-btn-hover-bg: #ffcd33;
+  --bs-btn-hover-border-color: #ffcd33;
+  --bs-btn-active-color: var(--pas-ink);
+  --bs-btn-active-bg: #e6ae00;
+  box-shadow: 0 6px 16px rgba(255, 193, 0, 0.3);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--pas-indigo-deep);
+  --bs-btn-border-color: color-mix(in srgb, var(--pas-indigo) 40%, transparent);
+  --bs-btn-hover-bg: var(--pas-indigo);
+  --bs-btn-hover-border-color: var(--pas-indigo);
+  --bs-btn-hover-color: var(--pas-white);
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--pas-slate);
+  --bs-btn-border-color: var(--pas-line);
+  --bs-btn-hover-bg: var(--pas-mist);
+  --bs-btn-hover-border-color: var(--pas-muted);
+  --bs-btn-hover-color: var(--pas-ink);
+}
+
+.btn-light {
+  --bs-btn-bg: var(--pas-white);
+  --bs-btn-border-color: var(--pas-line);
+  --bs-btn-color: var(--pas-ink);
+  --bs-btn-hover-bg: var(--pas-mist);
+}
+
+.btn-link {
+  --bs-btn-color: var(--pas-indigo);
+  --bs-btn-font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
+/* ==========================================================================
+   Cards
+   ========================================================================== */
+
+.card {
+  --bs-card-border-radius: var(--pas-radius-lg);
+  --bs-card-border-color: var(--pas-line);
+  --bs-card-bg: var(--pas-surface);
+  --bs-card-spacer-y: var(--pas-space-5);
+  --bs-card-spacer-x: var(--pas-space-5);
+  border-width: 1px;
+  transition:
+    transform var(--pas-duration) var(--pas-ease),
+    box-shadow var(--pas-duration) var(--pas-ease),
+    border-color var(--pas-duration) var(--pas-ease);
+}
+
+/* Round card imagery without setting overflow:hidden on .card itself —
+   that would clip any dropdown, tooltip or popover opened inside a card. */
+.card > img:first-child,
+.card-img-top {
+  border-start-start-radius: calc(var(--pas-radius-lg) - 1px);
+  border-start-end-radius: calc(var(--pas-radius-lg) - 1px);
+}
+.card > img:last-child,
+.card-img-bottom {
+  border-end-start-radius: calc(var(--pas-radius-lg) - 1px);
+  border-end-end-radius: calc(var(--pas-radius-lg) - 1px);
+}
+
+.card.shadow-sm { box-shadow: var(--pas-shadow-sm) !important; }
+.card.shadow,
+.card.shadow-lg { box-shadow: var(--pas-shadow-md) !important; }
+
+/* Lift only where the card is genuinely a target */
+a .card:hover,
+.card-hover:hover,
+.card[role='button']:hover,
+button .card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--pas-shadow-lg) !important;
+  border-color: color-mix(in srgb, var(--pas-indigo) 25%, var(--pas-line));
+}
+
+.card-title {
+  font-family: var(--pas-font-display);
+  font-weight: 700;
+  color: var(--pas-ink);
+  letter-spacing: var(--pas-tracking-tight);
+}
+
+.card-header {
+  background: transparent;
+  border-bottom-color: var(--pas-line);
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+  color: var(--pas-ink);
+  padding-block: var(--pas-space-4);
+}
+
+.card-footer { background: transparent; border-top-color: var(--pas-line); }
+
+/* ==========================================================================
+   Forms
+   ========================================================================== */
+
+.form-control,
+.form-select {
+  --bs-border-radius: var(--pas-radius-sm);
+  padding: 0.7rem 0.95rem;
+  border-color: var(--pas-line);
+  background-color: var(--pas-surface);
+  color: var(--pas-ink);
+  font-size: var(--pas-text-base);
+  transition:
+    border-color var(--pas-duration-fast) var(--pas-ease),
+    box-shadow var(--pas-duration-fast) var(--pas-ease);
+}
+
+.form-control::placeholder { color: var(--pas-muted); }
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--pas-indigo);
+  box-shadow: var(--pas-shadow-focus);
+}
+
+.form-control-lg { padding: 0.9rem 1.1rem; font-size: var(--pas-text-lg); }
+
+.form-label {
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+  font-size: var(--pas-text-sm);
+  color: var(--pas-ink);
+  margin-bottom: var(--pas-space-2);
+}
+
+.form-text { color: var(--pas-muted); font-size: var(--pas-text-sm); }
+
+.form-check-input { border-color: var(--pas-muted); }
+.form-check-input:checked {
+  background-color: var(--pas-indigo);
+  border-color: var(--pas-indigo);
+}
+.form-check-input:focus { box-shadow: var(--pas-shadow-focus); border-color: var(--pas-indigo); }
+
+.input-group-text {
+  background: var(--pas-mist);
+  border-color: var(--pas-line);
+  color: var(--pas-slate);
+}
+
+.is-invalid ~ .invalid-feedback,
+.invalid-feedback { color: var(--pas-danger); font-size: var(--pas-text-sm); }
+
+/* ==========================================================================
+   Badges
+   ========================================================================== */
+
+.badge {
+  --bs-badge-font-weight: 600;
+  --bs-badge-padding-x: 0.7em;
+  --bs-badge-padding-y: 0.45em;
+  font-family: var(--pas-font-display);
+  letter-spacing: 0.01em;
+  border-radius: var(--pas-radius-pill);
+}
+
+.badge.bg-primary { background: color-mix(in srgb, var(--pas-indigo) 12%, var(--pas-white)) !important; color: var(--pas-indigo-deep); }
+.badge.bg-success { background: var(--pas-success-soft) !important; color: var(--pas-success); }
+.badge.bg-danger  { background: var(--pas-danger-soft) !important;  color: var(--pas-danger); }
+.badge.bg-warning { background: var(--pas-warn-soft) !important;    color: var(--pas-warn); }
+.badge.bg-info    { background: var(--pas-info-soft) !important;    color: var(--pas-info); }
+.badge.bg-secondary { background: var(--pas-mist) !important; color: var(--pas-slate); }
+
+/* ==========================================================================
+   Alerts
+   ========================================================================== */
+
+.alert {
+  --bs-alert-border-radius: var(--pas-radius);
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  padding: var(--pas-space-4) var(--pas-space-5);
+}
+.alert-success { background: var(--pas-success-soft); border-left-color: var(--pas-success); color: #0a6b3d; }
+.alert-danger  { background: var(--pas-danger-soft);  border-left-color: var(--pas-danger);  color: #96201f; }
+.alert-warning { background: var(--pas-warn-soft);    border-left-color: var(--pas-gold);    color: #7a5c00; }
+.alert-info    { background: var(--pas-info-soft);    border-left-color: var(--pas-info);    color: #0a5c7a; }
+
+/* ==========================================================================
+   Navbar
+   ========================================================================== */
+
+/* Navbar.jsx carries its own inline <style> block with scroll-dependent
+   background classes (.navbar-dark-bg / .navbar-scrolled). Those own the
+   background and are left authoritative — this only supplies the glass
+   treatment when neither is active, plus shared typography. */
+.navbar:not(.navbar-dark-bg):not(.navbar-scrolled) {
+  background: color-mix(in srgb, var(--pas-white) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--pas-line);
+}
+
+.navbar { --bs-navbar-padding-y: var(--pas-space-3); }
+
+.navbar-brand {
+  font-family: var(--pas-font-display);
+  font-weight: 800;
+  letter-spacing: var(--pas-tracking-tight);
+  color: var(--pas-ink);
+}
+
+.navbar .nav-link {
+  font-family: var(--pas-font-display);
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--pas-slate);
+  padding-inline: var(--pas-space-3);
+  border-radius: var(--pas-radius-sm);
+  transition: color var(--pas-duration-fast) var(--pas-ease),
+              background-color var(--pas-duration-fast) var(--pas-ease);
+}
+.navbar .nav-link:hover { color: var(--pas-indigo); background: var(--pas-mist); }
+.navbar .nav-link.active { color: var(--pas-indigo-deep); font-weight: 600; }
+
+.dropdown-menu {
+  --bs-dropdown-border-color: var(--pas-line);
+  --bs-dropdown-border-radius: var(--pas-radius);
+  --bs-dropdown-link-active-bg: var(--pas-indigo);
+  box-shadow: var(--pas-shadow-lg);
+  padding: var(--pas-space-2);
+}
+.dropdown-item {
+  border-radius: var(--pas-radius-sm);
+  font-size: 0.95rem;
+  padding: 0.55rem 0.75rem;
+}
+.dropdown-item:hover { background: var(--pas-mist); color: var(--pas-indigo-deep); }
+
+/* ==========================================================================
+   Tabs & pills
+   ========================================================================== */
+
+.nav-tabs {
+  border-bottom-color: var(--pas-line);
+  gap: var(--pas-space-1);
+}
+.nav-tabs .nav-link {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+  color: var(--pas-muted);
+  padding: var(--pas-space-3) var(--pas-space-4);
+}
+.nav-tabs .nav-link:hover { color: var(--pas-ink); border-bottom-color: var(--pas-line); }
+.nav-tabs .nav-link.active {
+  color: var(--pas-indigo-deep);
+  background: transparent;
+  border-bottom-color: var(--pas-indigo);
+}
+
+.nav-pills .nav-link {
+  border-radius: var(--pas-radius-pill);
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+  color: var(--pas-slate);
+}
+.nav-pills .nav-link.active { background: var(--pas-indigo); }
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+
+.table {
+  --bs-table-border-color: var(--pas-line);
+  --bs-table-hover-bg: var(--pas-mist);
+  color: var(--pas-slate);
+  vertical-align: middle;
+}
+.table > thead {
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--pas-tracking-wide);
+  color: var(--pas-muted);
+}
+.table > thead th { border-bottom: 1px solid var(--pas-line); padding-block: var(--pas-space-3); font-weight: 600; }
+.table > tbody td { padding-block: var(--pas-space-4); }
+/* Numeric columns align and use tabular figures */
+.table td.num, .table th.num { text-align: right; font-family: var(--pas-font-data); font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   Progress
+   ========================================================================== */
+
+.progress {
+  --bs-progress-bg: var(--pas-line);
+  --bs-progress-border-radius: var(--pas-radius-pill);
+  height: 8px;
+  overflow: hidden;
+}
+.progress-bar {
+  background: linear-gradient(90deg, var(--pas-indigo), var(--pas-indigo-lift));
+  transition: width var(--pas-duration-slow) var(--pas-ease);
+}
+
+/* ==========================================================================
+   Modal, pagination, misc
+   ========================================================================== */
+
+.modal-content {
+  border: 0;
+  border-radius: var(--pas-radius-lg);
+  box-shadow: var(--pas-shadow-lg);
+}
+.modal-header, .modal-footer { border-color: var(--pas-line); }
+.modal-title { font-family: var(--pas-font-display); font-weight: 700; color: var(--pas-ink); }
+
+.page-link {
+  color: var(--pas-slate);
+  border-color: var(--pas-line);
+  font-family: var(--pas-font-display);
+  font-weight: 600;
+}
+.page-item.active .page-link { background: var(--pas-indigo); border-color: var(--pas-indigo); }
+
+.spinner-border { color: var(--pas-indigo); }
+
+.list-group-item { border-color: var(--pas-line); padding: var(--pas-space-4); }
+
+.text-muted { color: var(--pas-muted) !important; }
+.text-primary { color: var(--pas-indigo) !important; }
+.bg-light { background-color: var(--pas-mist) !important; }
+.border { border-color: var(--pas-line) !important; }
+
+/* ==========================================================================
+   Signature: the answer-sheet option marker
+   Drawn from the product's own world — every question in this app is
+   multiple choice. Used as an eyebrow marker and hero anchor, sparingly.
+   ========================================================================== */
+
+.pas-marker {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--pas-indigo) 35%, transparent);
+  font-family: var(--pas-font-data);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--pas-indigo-deep);
+  background: color-mix(in srgb, var(--pas-indigo) 7%, transparent);
+  flex: none;
+}
+.pas-marker--filled {
+  background: var(--pas-indigo);
+  border-color: var(--pas-indigo);
+  color: var(--pas-white);
+}
+.pas-marker--gold {
+  background: var(--pas-gold);
+  border-color: var(--pas-gold);
+  color: var(--pas-ink);
+}
+.pas-marker--sm { inline-size: 1.75rem; block-size: 1.75rem; font-size: 0.8rem; }
+
+/* Eyebrow label — pairs with the marker above section titles */
+.pas-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pas-space-2);
+  font-family: var(--pas-font-display);
+  font-size: var(--pas-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--pas-tracking-wide);
+  color: var(--pas-indigo-deep);
+  margin-bottom: var(--pas-space-3);
+}
+
+/* ==========================================================================
+   Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .card:hover,
+  a .card:hover,
+  .card-hover:hover { transform: none; }
+}

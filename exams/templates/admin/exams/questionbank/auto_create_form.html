@@ -1,0 +1,133 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        .auto-create-container {
+            color: #333333;
+        }
+        .auto-create-container h1,
+        .auto-create-container h3 {
+            color: #1a1a1a;
+        }
+        .auto-create-container p,
+        .auto-create-container li,
+        .auto-create-container label,
+        .auto-create-container strong {
+            color: #333333;
+        }
+        .auto-create-container select {
+            color: #333333;
+            background-color: #ffffff;
+        }
+        .info-box {
+            color: #333333;
+        }
+        .info-box h3 {
+            color: #1a1a1a;
+        }
+        .info-box li strong {
+            color: #1a1a1a;
+        }
+        .form-box {
+            color: #333333;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="auto-create-container">
+    <h1>🤖 Auto-Create Question Banks</h1>
+    
+    <div class="info-box" style="background: #e7f3ff; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h3 style="color: #1a1a1a;">How It Works:</h3>
+        <p style="color: #333333;">This tool automatically groups questions into question banks based on your chosen strategy.</p>
+        <ul style="color: #333333;">
+            <li><strong style="color: #1a1a1a;">Auto:</strong> Groups by Exam Category + Subject + Year</li>
+            <li><strong style="color: #1a1a1a;">Exam Category:</strong> Creates banks for each exam type</li>
+            <li><strong style="color: #1a1a1a;">Subject:</strong> Creates banks for each subject</li>
+            <li><strong style="color: #1a1a1a;">Exam Year:</strong> Creates banks for each exam year</li>
+        </ul>
+    </div>
+    
+    <form method="post" class="form-box" style="background: white; padding: 20px; border-radius: 8px;">
+        {% csrf_token %}
+        
+        <div style="margin-bottom: 20px;">
+            <label style="color: #1a1a1a;"><strong>Grouping Strategy:</strong></label>
+            <select name="grouping_strategy" style="display: block; margin-top: 10px; padding: 8px; width: 100%; color: #333333; background: white; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="auto">Auto (Exam Category + Subject + Year)</option>
+                <option value="exam_category">By Exam Category</option>
+                <option value="subject">By Subject</option>
+                <option value="exam_year">By Exam Year</option>
+            </select>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="color: #1a1a1a;"><strong>Filter Questions (Optional):</strong></label>
+            <select name="filter_type" id="filter_type" 
+                    style="display: block; margin-top: 10px; padding: 8px; width: 100%; color: #333333; background: white; border: 1px solid #ddd; border-radius: 4px;"
+                    onchange="toggleFilterOptions()">
+                <option value="all">All Questions</option>
+                <option value="exam_category">By Exam Category</option>
+                <option value="subject">By Subject</option>
+                <option value="exam_year">By Exam Year</option>
+            </select>
+        </div>
+        
+        <div id="category_filter" style="display: none; margin-bottom: 20px;">
+            <label style="color: #1a1a1a;"><strong>Select Exam Category:</strong></label>
+            <select name="exam_category" style="display: block; margin-top: 10px; padding: 8px; width: 100%; color: #333333; background: white; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- All Categories --</option>
+                {% for cat in exam_categories %}
+                <option value="{{ cat.id }}">{{ cat.display_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="subject_filter" style="display: none; margin-bottom: 20px;">
+            <label style="color: #1a1a1a;"><strong>Select Subject:</strong></label>
+            <select name="subject" style="display: block; margin-top: 10px; padding: 8px; width: 100%; color: #333333; background: white; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- All Subjects --</option>
+                {% for subj in subjects %}
+                <option value="{{ subj.id }}">{{ subj.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="year_filter" style="display: none; margin-bottom: 20px;">
+            <label style="color: #1a1a1a;"><strong>Select Exam Year:</strong></label>
+            <select name="exam_year" style="display: block; margin-top: 10px; padding: 8px; width: 100%; color: #333333; background: white; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">-- All Years --</option>
+                {% for year in exam_years %}
+                <option value="{{ year.id }}">{{ year.year }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" class="button" 
+                    style="background: #28a745; color: white; padding: 10px 20px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer;">
+                🤖 Create Question Banks
+            </button>
+            <a href="{% url 'admin:exams_questionbank_changelist' %}" 
+               class="button" style="background: #6c757d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+
+<script>
+function toggleFilterOptions() {
+    var filterType = document.getElementById('filter_type').value;
+    document.getElementById('category_filter').style.display = 
+        filterType === 'exam_category' ? 'block' : 'none';
+    document.getElementById('subject_filter').style.display = 
+        filterType === 'subject' ? 'block' : 'none';
+    document.getElementById('year_filter').style.display = 
+        filterType === 'exam_year' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

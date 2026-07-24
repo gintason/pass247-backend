@@ -17,9 +17,9 @@ urlpatterns = [
     path('interview_mentoring/', views.interview_mentoring_view, name='interview_mentoring'),
     path('personal_coaching/', views.personal_coaching_view, name='personal_coaching'),
     path('cv_build_up/', views.cv_build_up_view, name='cv_build_up'),
-     path('typing_skills/', views.typing_skills_view, name='typing_skills'),
-     path('remote_jobs/', views.remote_jobs_view, name='remote_jobs'),
-     
-  
+    path('typing_skills/', views.typing_skills_view, name='typing_skills'),
+    path('remote_jobs/', views.remote_jobs_view, name='remote_jobs'),
+    path('api/test/', views.api_test, name='api_test'),
+    
 
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

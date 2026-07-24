@@ -186,28 +186,7 @@
         <a class="navbar-brand me-2" href="{% url 'pasApp:home' %}">
             <img src="{% static 'logo1.png' %}" alt="Logo" width="120px">
         </a>
-
-  
-     <!-- SEARCH BAR - Now closer to the logo -->
-
-     <form method="post" action="{% url 'pasApp:search_results' %}" 
-        class="d-none d-lg-flex align-items-center me-auto" 
-        id="searchBar"
-        style="margin: 2px 10px 0 10px; padding-top: 2px;">
-        {% csrf_token %}
-        <div class="position-relative" style="max-width: 220px;">
-            <span class="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted">
-                <i class="bi bi-search"></i>
-            </span>
-            <input type="search" name="searched"
-                class="form-control ps-4 rounded-pill border-0 shadow-none"
-                style="background-color: #f8f9fa;"
-                placeholder="Search...">
-        </div>
-    </form>
  
-   
-
  
         <!-- TOGGLER BUTTON -->
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse"
@@ -216,38 +195,29 @@
             <span class="navbar-toggler-icon"></span>
         </button>
   
-        <!-- NAVBAR MENU -->
-        <div class="collapse navbar-collapse" id="navbarNavDropdown">
-            
-        <!-- MOBILE SEARCH BAR -->
-    <form method="post" action="{% url 'pasApp:search_results' %}" class="d-lg-none my-2 w-100 px-2" id="searchBarMobile">
-        {% csrf_token %}
-        <div class="position-relative">
-            <span class="position-absolute top-50 start-0 translate-middle-y ms-2 text-muted">
-                <i class="bi bi-search"></i>
-            </span>
-            <input type="search" name="searched"
-                class="form-control ps-4 rounded-pill border-0 shadow-none"
-                style="background-color: #f8f9fa;"
-                placeholder="Search...">
-        </div>
-    </form>
-
-
-  
             <!-- NAV LINKS -->
         <ul class="navbar-nav me-auto mt-3 mt-lg-0 ms-3"> <!-- Added ms-3 -->
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'pasApp:about' %}">About</a>
+                <a class="nav-link" href="{% url 'home' %}">Home</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'pasApp:how_it_works' %}">How It Works</a>
+                <a class="nav-link" href="{% url 'about' %}">About</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'pasApp:contact' %}">For Exams</a>
+                <a class="nav-link" href="{% url 'interviews' %}">Interviews</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'blog:posts' %}">Blog</a>
+                <a class="nav-link" href="{% url 'exams' %}">Exams</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'pricing' %}">Pricing</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'blog' %}">Blog</a>
+            </li>
+
+             <li class="nav-item">
+                <a class="nav-link" href="{% url 'contact' %}">Contact</a>
             </li>
 
             <!-- DROPDOWN MENU -->

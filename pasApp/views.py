@@ -7,6 +7,10 @@ from django.contrib import messages
 from .forms import ContactForm
 from django.shortcuts import render, redirect
 from payments.utils import subscription_required  # Import the decorator
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
+import json
 
 # Create your views here.
 
@@ -123,3 +127,21 @@ def remote_jobs_view(request):
     return render(request, "pasApp/remote_jobs.html")
 
 
+@csrf_exempt
+def api_test(request):
+    if request.method == 'GET':
+        return JsonResponse({
+            'status': 'success',
+            'message': 'API is working!',
+            'user': str(request.user) if request.user.is_authenticated else 'Anonymous'
+        })
+    
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            return JsonResponse({
+                'status': 'success',
+                'received_data': data
+            })
+        except:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)

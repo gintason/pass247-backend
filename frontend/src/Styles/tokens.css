@@ -1,0 +1,158 @@
+/* ==========================================================================
+   Pass24/7 — Design tokens
+   Single source of truth for colour, type, space, elevation and motion.
+
+   The palette is derived from the identity already in the product
+   (#4400ff appears 161 times, #ffc100 66 times). It is refined, not
+   replaced: neutrals are given a violet cast so they harmonise with the
+   indigo instead of fighting it, and the deep tone is darkened for
+   contrast on light backgrounds.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand ---- */
+  --pas-indigo: #4400ff;
+  --pas-indigo-deep: #2b00a3;   /* headings, hover, text-on-light */
+  --pas-indigo-lift: #6a4cff;   /* gradients, decorative lift */
+  --pas-gold: #ffc100;          /* achievement, highlight, accent */
+  --pas-gold-deep: #d99f00;     /* gold text on light — meets contrast */
+
+  /* ---- Neutrals (violet-cast, tuned to the brand) ---- */
+  --pas-ink: #12101a;           /* primary text / darkest surface */
+  --pas-graphite: #2c2839;      /* secondary dark surface */
+  --pas-slate: #5b5670;         /* body copy */
+  --pas-muted: #8b8699;         /* captions, meta */
+  --pas-line: #e4e1ee;          /* hairlines, borders */
+  --pas-mist: #f6f5fb;          /* page tint */
+  --pas-white: #ffffff;
+
+  /* ---- Semantic status ---- */
+  --pas-success: #0f9d58;
+  --pas-success-soft: #e6f6ee;
+  --pas-danger: #d93838;
+  --pas-danger-soft: #fdeaea;
+  --pas-warn: #b98900;
+  --pas-warn-soft: #fff6e0;
+  --pas-info: #0b7fa8;
+  --pas-info-soft: #e5f4fa;
+
+  /* ---- Surfaces ---- */
+  --pas-surface: var(--pas-white);
+  --pas-surface-sunken: var(--pas-mist);
+  --pas-surface-invert: var(--pas-ink);
+
+  /* ---- Type ---- */
+  --pas-font-display: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pas-font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pas-font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+  /* Fluid type scale — clamp keeps it responsive without breakpoint jumps */
+  --pas-text-xs: 0.78rem;
+  --pas-text-sm: 0.875rem;
+  --pas-text-base: 1rem;
+  --pas-text-lg: 1.125rem;
+  --pas-text-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --pas-text-2xl: clamp(1.5rem, 1.25rem + 1.1vw, 2rem);
+  --pas-text-3xl: clamp(1.875rem, 1.4rem + 2vw, 2.75rem);
+  --pas-text-4xl: clamp(2.25rem, 1.5rem + 3.4vw, 4rem);
+
+  --pas-leading-tight: 1.12;
+  --pas-leading-snug: 1.3;
+  --pas-leading-normal: 1.6;
+  --pas-leading-relaxed: 1.75;  /* long-form: questions, explanations */
+
+  --pas-tracking-tight: -0.022em;
+  --pas-tracking-normal: 0;
+  --pas-tracking-wide: 0.08em;   /* eyebrows, small caps */
+
+  /* ---- Space (4px base) ---- */
+  --pas-space-1: 0.25rem;
+  --pas-space-2: 0.5rem;
+  --pas-space-3: 0.75rem;
+  --pas-space-4: 1rem;
+  --pas-space-5: 1.5rem;
+  --pas-space-6: 2rem;
+  --pas-space-7: 3rem;
+  --pas-space-8: 4rem;
+  --pas-space-9: 6rem;
+
+  /* Section rhythm — one variable so vertical pacing stays consistent */
+  --pas-section-y: clamp(3rem, 2rem + 5vw, 6rem);
+
+  /* ---- Radius ---- */
+  --pas-radius-sm: 8px;
+  --pas-radius: 14px;
+  --pas-radius-lg: 22px;
+  --pas-radius-pill: 999px;
+
+  /* ---- Elevation ----
+     A real scale rather than scattered one-off shadows. Tinted with the
+     brand indigo so shadows read as part of the palette, not grey smudges. */
+  --pas-shadow-xs: 0 1px 2px rgba(18, 16, 26, 0.06);
+  --pas-shadow-sm: 0 2px 8px rgba(43, 0, 163, 0.06), 0 1px 2px rgba(18, 16, 26, 0.04);
+  --pas-shadow-md: 0 8px 24px rgba(43, 0, 163, 0.09), 0 2px 6px rgba(18, 16, 26, 0.04);
+  --pas-shadow-lg: 0 18px 44px rgba(43, 0, 163, 0.13), 0 4px 12px rgba(18, 16, 26, 0.05);
+  --pas-shadow-focus: 0 0 0 3px rgba(68, 0, 255, 0.28);
+
+  /* ---- Motion ---- */
+  --pas-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --pas-duration-fast: 140ms;
+  --pas-duration: 240ms;
+  --pas-duration-slow: 420ms;
+
+  /* ---- Layout ---- */
+  --pas-container: 1220px;
+  --pas-container-narrow: 780px;  /* reading measure for long-form content */
+}
+
+/* ==========================================================================
+   Legacy compatibility layer
+
+   The stylesheet that previously defined --primary/--secondary/--white etc.
+   was replaced by this token system. Roughly 300 references to those names
+   remain in component-level inline <style> blocks across 10+ files
+   (Home, Exams, Blog, Contact, About, Careers, CVBuildUp, skills,
+   InterviewLevels...).
+
+   Aliasing them onto the new tokens does two things: it keeps those
+   components working, and it means they now inherit the refined palette
+   automatically instead of holding stale hard-coded values. Migrate call
+   sites to the --pas-* names over time; then this block can be deleted.
+   ========================================================================== */
+
+:root {
+  --primary: var(--pas-indigo);
+  --primary-dark: var(--pas-indigo-deep);
+  --primary-light: var(--pas-indigo-lift);
+  --secondary: var(--pas-gold);
+  --secondary-dark: var(--pas-gold-deep);
+  --secondary-light: #ffd700;
+  --dark: var(--pas-ink);
+  --dark-bg: var(--pas-ink);
+  --gray: var(--pas-slate);
+  --light: var(--pas-mist);
+  --white: var(--pas-white);
+
+  --gradient-primary: linear-gradient(135deg, var(--pas-indigo) 0%, var(--pas-indigo-lift) 100%);
+  --gradient-secondary: linear-gradient(135deg, var(--pas-gold) 0%, #ffd700 100%);
+  --gradient-hero: linear-gradient(135deg, rgba(68, 0, 255, 0.30) 0%, rgba(255, 193, 0, 0.18) 100%);
+
+  --shadow-sm: var(--pas-shadow-sm);
+  --shadow-md: var(--pas-shadow-md);
+  --shadow-lg: var(--pas-shadow-lg);
+  --shadow-hover: var(--pas-shadow-lg);
+
+  --transition: all var(--pas-duration) var(--pas-ease);
+  --border-radius: var(--pas-radius);
+  --border-radius-sm: var(--pas-radius-sm);
+  --border-radius-lg: var(--pas-radius-lg);
+}
+
+/* Honour the OS setting. Motion is decoration here, never information. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pas-duration-fast: 1ms;
+    --pas-duration: 1ms;
+    --pas-duration-slow: 1ms;
+  }
+}

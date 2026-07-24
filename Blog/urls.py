@@ -1,10 +1,14 @@
 from django.urls import path
 from . import views
-from .views import posts_view, PostDetail
 
 app_name = 'blog'
 
 urlpatterns = [
-    path('posts/', posts_view, name='posts'),
-    path('details/<int:pk>/', PostDetail.as_view(), name='post_detail'), 
+    # Template views (only detail kept, if you still need it)
+    path('details/<int:pk>/', views.PostDetail.as_view(), name='post_detail'),
+
+    # API views
+    path('posts/', views.posts_api_view, name='posts'),
+    path('api/posts/', views.posts_api_view, name='posts-api'),
+    path('api/posts/<int:pk>/', views.post_detail_api_view, name='post-detail-api'),
 ]
