@@ -26,4 +26,4 @@ echo "--> Build complete"
 # NOTE: no superuser is created here. Doing so would need credentials in
 # environment variables, and the command would re-run on every deploy.
 # Create one once from the Render shell instead:
-#     python manage.py createsuperuser
+#     python manage.py reatesuperuser
