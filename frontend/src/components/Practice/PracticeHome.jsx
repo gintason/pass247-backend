@@ -28,7 +28,7 @@ const getCSRFTokenFromCookie = () => {
 // Function to fetch CSRF token from server
 const fetchCSRFToken = async () => {
   try {
-    const response = await api.get('/api/exams/api/csrf/');
+    const response = await api.get('/api/exams/csrf/');
     if (response.data.csrfToken) {
       return response.data.csrfToken;
     }
@@ -114,7 +114,7 @@ const PracticeHome = () => {
       console.log('Checking authentication status...');
       await fetchCSRFToken();
       
-      const response = await api.get('/api/exams/api/auth/status/');
+      const response = await api.get('/api/exams/auth/status/');
       console.log('Auth status response:', response.data);
       
       if (response.data.is_authenticated) {

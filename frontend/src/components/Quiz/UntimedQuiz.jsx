@@ -32,7 +32,7 @@ const getCSRFTokenFromCookie = () => {
 
 const fetchCSRFToken = async () => {
   try {
-    const response = await api.get('/api/exams/api/csrf/');
+    const response = await api.get('/api/exams/csrf/');
     if (response.data.csrfToken) {
       return response.data.csrfToken;
     }

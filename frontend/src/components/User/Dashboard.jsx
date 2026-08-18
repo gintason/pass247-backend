@@ -47,7 +47,7 @@ const Dashboard = () => {
       // endpoint returned 402 to non-premium users. A single unavailable
       // panel should degrade to zeroes, not blank the page.
       try {
-        const statsResponse = await axios.get('/api/exams/api/stats/');
+        const statsResponse = await axios.get('/api/exams/stats/');
         if (statsResponse.data) {
           setStats({
             totalSessions: statsResponse.data.stats?.totalSessions || 0,
@@ -94,7 +94,7 @@ const Dashboard = () => {
       // This previously called '/api/exams/trial-status/' first, which always
       // 404s: that path is registered as 'api/trial-status/' *inside*
       // exams/urls.py, which mounts at '/api/exams/', so the real URL is
-      // '/api/exams/api/trial-status/'. The code then silently retried
+      // '/api/exams/trial-status/'. The code then silently retried
       // '/api/exams/trial/status/' (the FreeTrialViewSet 'status' action),
       // which is the endpoint that actually works and is what the rest of the
       // app uses. Calling it directly removes a guaranteed failed request on
