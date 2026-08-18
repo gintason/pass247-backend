@@ -8,25 +8,10 @@ const QuestionDisplay = ({
   feedback,
   disabled 
 }) => {
-  
-  // Debug log to trace data structure in your browser's inspect tools console
-  useEffect(() => {
-    if (showFeedback) {
-      console.log('--- QuestionDisplay Debugger ---');
-      console.log('User Input Answer:', selectedAnswer);
-      console.log('Feedback API Payload Received:', feedback);
-      console.log('Detected Correct Key value:', feedback?.correct_option || feedback?.correct_answer);
-    }
-  }, [showFeedback, feedback, selectedAnswer]);
 
-  // Show celebration alert when answer is correct
-  useEffect(() => {
-    if (showFeedback && feedback && feedback.is_correct) {
-      const points = feedback.points_earned || 25;
-      showCelebrationAlert(`🎉 Correct! +${points} points`);
-    }
-  }, [showFeedback, feedback]);
-
+  // ============================================================
+  // FUNCTIONS DECLARED BEFORE EFFECTS
+  // ============================================================
   const showCelebrationAlert = (message) => {
     const alertDiv = document.createElement('div');
     alertDiv.className = 'celebration-alert';
@@ -50,6 +35,24 @@ const QuestionDisplay = ({
       }, 300);
     }, 3000);
   };
+
+  // Debug log to trace data structure in your browser's inspect tools console
+  useEffect(() => {
+    if (showFeedback) {
+      console.log('--- QuestionDisplay Debugger ---');
+      console.log('User Input Answer:', selectedAnswer);
+      console.log('Feedback API Payload Received:', feedback);
+      console.log('Detected Correct Key value:', feedback?.correct_option || feedback?.correct_answer);
+    }
+  }, [showFeedback, feedback, selectedAnswer]);
+
+  // Show celebration alert when answer is correct
+  useEffect(() => {
+    if (showFeedback && feedback && feedback.is_correct) {
+      const points = feedback.points_earned || 25;
+      showCelebrationAlert(`🎉 Correct! +${points} points`);
+    }
+  }, [showFeedback, feedback]);
 
   if (!question) return null;
 
@@ -132,10 +135,10 @@ const QuestionDisplay = ({
               // Active Feedback State Styling Lock rules
               if (isCorrect) {
                 optionClasses += ' border-success border-2';
-                customStyle.backgroundColor = 'rgba(40, 167, 69, 0.25)'; // Persistent light green highlighting
+                customStyle.backgroundColor = 'rgba(40, 167, 69, 0.25)';
               } else if (isWrongSelected) {
                 optionClasses += ' border-danger border-2';
-                customStyle.backgroundColor = 'rgba(220, 53, 69, 0.15)'; // Persistent light red highlighting
+                customStyle.backgroundColor = 'rgba(220, 53, 69, 0.15)';
               }
             }
 

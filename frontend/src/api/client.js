@@ -1,18 +1,5 @@
 import axios from 'axios';
 
-// Shared axios client for the whole app.
-//
-// Why this exists: several components were calling the bare `axios` import
-// directly, with no `withCredentials` and no CSRF token attached. Since the
-// backend uses session-cookie authentication with CORS_ALLOW_CREDENTIALS,
-// requests made that way can silently fail to carry/receive the session
-// cookie in any cross-origin setup (e.g. Vite dev server talking to Django
-// on a different port), and POST/PUT/DELETE requests will be rejected by
-// Django's CSRF protection once a view is no longer @csrf_exempt.
-//
-// Use this `api` client anywhere you would have used `axios` for a call to
-// our own backend.
-
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   withCredentials: true,
@@ -41,7 +28,7 @@ const fetchCSRFToken = async () => {
       return response.data.csrfToken;
     }
   } catch {
-    // fall through to cookie check below
+    // fall back to cookie
   }
   return getCSRFTokenFromCookie();
 };
@@ -57,6 +44,12 @@ api.interceptors.request.use(
         config.headers['X-CSRFToken'] = csrfToken;
       }
     }
+
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

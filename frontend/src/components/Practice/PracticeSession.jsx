@@ -1,81 +1,13 @@
-import api from '../../api/client';
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE_URL } from '../../config';
 import QuestionDisplay from './QuestionDisplay';
 import AnswerFeedback from './AnswerFeedback';
 import ProgressBar from './ProgressBar';
 import SessionSummary from './SessionSummary';
+import api, { fetchCSRFToken } from '../../api/client';
 
 // ============================================================
-// CREATE PROPERLY CONFIGURED AXIOS INSTANCE
-// ============================================================
-const api = axios.create({
-  // Was hardcoded to 'http://localhost:8080', which made every request from
-  // the practice session target localhost on the visitor's own machine in
-  // production. Defaults to same-origin; override with VITE_API_BASE_URL.
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-  }
-});
-
-// Function to get CSRF token from cookie
-const getCSRFTokenFromCookie = () => {
-  const name = 'csrftoken';
-  const cookies = document.cookie.split(';');
-  for (let i = 0; i < cookies.length; i++) {
-    const cookie = cookies[i].trim();
-    if (cookie.startsWith(name + '=')) {
-      return decodeURIComponent(cookie.substring(name.length + 1));
-    }
-  }
-  return null;
-};
-
-// Function to fetch CSRF token from server
-const fetchCSRFToken = async () => {
-  try {
-    const response = await api.get('/api/exams/csrf/');
-    if (response.data.csrfToken) {
-      return response.data.csrfToken;
-    }
-  } catch (error) {
-    console.log('Could not fetch CSRF token, will try existing cookie');
-  }
-  return getCSRFTokenFromCookie();
-};
-
-// Request interceptor to add CSRF token and auth token
-api.interceptors.request.use(
-  async config => {
-    if (config.method !== 'get') {
-      let csrfToken = getCSRFTokenFromCookie();
-      if (!csrfToken) {
-        csrfToken = await fetchCSRFToken();
-      }
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken;
-      }
-    }
-    
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  error => {
-    return Promise.reject(error);
-  }
-);
-
-// ============================================================
-// STUDY NOTES COMPONENT (FIXED)
+// STUDY NOTES COMPONENT
 // ============================================================
 const StudyNotes = ({ subjectName, subjectId }) => {
   const [notes, setNotes] = useState(null);
@@ -83,13 +15,13 @@ const StudyNotes = ({ subjectName, subjectId }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Only fetch if subjectId is valid
     if (subjectId && subjectId !== 'null' && subjectId !== 'undefined') {
       fetchStudyNotes();
     } else {
       setLoading(false);
       setError('Subject ID not available');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjectId]);
 
   const fetchStudyNotes = async () => {
@@ -123,8 +55,8 @@ const StudyNotes = ({ subjectName, subjectId }) => {
         <i className="fas fa-book-open fa-3x text-muted mb-3"></i>
         <h5>Study Notes Unavailable</h5>
         <p className="text-muted">
-          {subjectId && subjectId !== 'null' && subjectId !== 'undefined' 
-            ? `Study notes for ${subjectName || 'this subject'} are not yet available.` 
+          {subjectId && subjectId !== 'null' && subjectId !== 'undefined'
+            ? `Study notes for ${subjectName || 'this subject'} are not yet available.`
             : 'Please access this section from a valid subject page.'}
         </p>
         {subjectId && subjectId !== 'null' && subjectId !== 'undefined' && (
@@ -166,7 +98,6 @@ const StudyNotes = ({ subjectName, subjectId }) => {
         </div>
       </div>
 
-      {/* Topics Section */}
       {notes.topics && notes.topics.length > 0 && (
         <div className="mb-4">
           <h5 className="mb-3 fw-bold">
@@ -203,7 +134,6 @@ const StudyNotes = ({ subjectName, subjectId }) => {
         </div>
       )}
 
-      {/* Formulas Section */}
       {notes.formulas && notes.formulas.length > 0 && (
         <div className="mb-4">
           <h5 className="mb-3 fw-bold">
@@ -237,7 +167,6 @@ const StudyNotes = ({ subjectName, subjectId }) => {
         </div>
       )}
 
-      {/* General Notes Content */}
       {notes.content && (
         <div className="mb-4">
           <h5 className="mb-3 fw-bold">
@@ -254,7 +183,6 @@ const StudyNotes = ({ subjectName, subjectId }) => {
         </div>
       )}
 
-      {/* References */}
       {notes.references && notes.references.length > 0 && (
         <div className="mb-4">
           <h5 className="mb-3 fw-bold">
@@ -277,99 +205,43 @@ const StudyNotes = ({ subjectName, subjectId }) => {
 };
 
 // ============================================================
-// PAST QUESTIONS COMPONENT (FIXED)
+// PAST QUESTIONS COMPONENT
 // ============================================================
 const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
-  // ============================================================
-  // DEBUG LOGS
-  // ============================================================
-  console.log('=== PAST QUESTIONS COMPONENT MOUNTED ===');
-  console.log('subjectName:', subjectName);
-  console.log('subjectId:', subjectId, 'type:', typeof subjectId);
-  console.log('examCategory:', examCategory, 'type:', typeof examCategory);
-  // ============================================================
-  
   const [pastQuestions, setPastQuestions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState('all');
-  const [selectedAnswers, setSelectedAnswers] = useState({}); // { [questionId]: 'A' }
-  const [feedbackByQuestion, setFeedbackByQuestion] = useState({}); // { [questionId]: {...} }
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [feedbackByQuestion, setFeedbackByQuestion] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const questionsPerPage = 10;
 
   useEffect(() => {
-    // ============================================================
-    // DEBUG LOGS
-    // ============================================================
-    console.log('=== PAST QUESTIONS USEEFFECT TRIGGERED ===');
-    console.log('subjectId:', subjectId);
-    console.log('Is valid?', subjectId && subjectId !== 'null' && subjectId !== 'undefined');
-    // ============================================================
-    
-    // Only fetch if subjectId is valid
     if (subjectId && subjectId !== 'null' && subjectId !== 'undefined') {
-      console.log('✅ subjectId is valid, calling fetchPastQuestions()');
       fetchPastQuestions();
     } else {
-      console.log('❌ subjectId is INVALID, not fetching');
       setLoading(false);
       setError('Subject ID not available');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjectId]);
 
   const fetchPastQuestions = async () => {
     try {
-      // ============================================================
-      // DEBUG LOGS
-      // ============================================================
-      console.log('=== FETCHING PAST QUESTIONS ===');
-      console.log('URL:', `/api/exams/past-questions/${subjectId}/`);
-      console.log('examCategory param:', examCategory);
-      // ============================================================
-      
       setLoading(true);
       setError(null);
       const response = await api.get(`/api/exams/past-questions/${subjectId}/`, {
         params: { exam_category: examCategory || '' }
       });
-      
-      // ============================================================
-      // DEBUG LOGS
-      // ============================================================
-      console.log('✅ Response status:', response.status);
-      console.log('Response data keys:', Object.keys(response.data));
-      console.log('Questions array:', response.data.questions);
-      console.log('Questions length:', response.data.questions?.length);
-      console.log('Full response:', JSON.stringify(response.data, null, 2));
-      // ============================================================
-      
       setPastQuestions(response.data);
       setLoading(false);
     } catch (err) {
-      // ============================================================
-      // DEBUG LOGS
-      // ============================================================
-      console.error('❌ FETCH ERROR ===');
-      console.error('Error message:', err.message);
-      console.error('Error response status:', err.response?.status);
-      console.error('Error response data:', err.response?.data);
-      // ============================================================
-      
+      console.error('Error fetching past questions:', err);
       setError('Failed to load past questions');
       setLoading(false);
     }
   };
-
-  // ============================================================
-  // DEBUG LOG - Before render checks
-  // ============================================================
-  console.log('=== RENDER STATE ===');
-  console.log('loading:', loading);
-  console.log('error:', error);
-  console.log('pastQuestions:', pastQuestions);
-  console.log('pastQuestions?.questions:', pastQuestions?.questions);
-  // ============================================================
 
   const handleSelectAnswer = (questionId, letter) => {
     setSelectedAnswers(prev => ({ ...prev, [questionId]: letter }));
@@ -398,11 +270,11 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
 
   const getFilteredQuestions = () => {
     if (!pastQuestions?.questions) return [];
-    
+
     if (selectedYear === 'all') {
       return pastQuestions.questions;
     }
-    return pastQuestions.questions.filter(q => 
+    return pastQuestions.questions.filter(q =>
       q.exam_year === parseInt(selectedYear) || q.year === parseInt(selectedYear)
     );
   };
@@ -444,12 +316,12 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
         <i className="fas fa-history fa-3x text-muted mb-3"></i>
         <h5>Past Questions Unavailable</h5>
         <p className="text-muted">
-          {subjectId && subjectId !== 'null' && subjectId !== 'undefined' 
-            ? `Past questions for ${subjectName || 'this subject'} are not yet available.` 
+          {subjectId && subjectId !== 'null' && subjectId !== 'undefined'
+            ? `Past questions for ${subjectName || 'this subject'} are not yet available.`
             : 'Please access this section from a valid subject page.'}
         </p>
         {subjectId && subjectId !== 'null' && subjectId !== 'undefined' && (
-          <button className="btn btn-outline-purple btn-sm mt-2" 
+          <button className="btn btn-outline-purple btn-sm mt-2"
             style={{ color: '#6f42c1', borderColor: '#6f42c1' }}
             onClick={fetchPastQuestions}>
             <i className="fas fa-redo me-1"></i> Retry
@@ -475,7 +347,6 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
 
   return (
     <div className="past-questions-container">
-      {/* Header: count + year filter */}
       <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <h5 className="mb-0" style={{ color: '#4b2e83' }}>
           <i className="fas fa-history me-2"></i>
@@ -498,7 +369,6 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
         )}
       </div>
 
-      {/* Question list */}
       {filteredQuestions.map((question, idx) => {
         const chosen = selectedAnswers[question.id];
         const fb = feedbackByQuestion[question.id];
@@ -578,7 +448,6 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
         );
       })}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="d-flex justify-content-center align-items-center gap-3 mt-3">
           <button
@@ -609,14 +478,14 @@ const PracticeSession = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  
+
   const isTrial = searchParams.get('trial') === 'true';
   const bankId = searchParams.get('bank_id');
   const subjectName = searchParams.get('subject');
   const subjectId = searchParams.get('subject_id');
   const examCategory = searchParams.get('exam_category');
-  
-  const [activeTab, setActiveTab] = useState('practice'); // 'practice', 'notes', 'past-questions'
+
+  const [activeTab, setActiveTab] = useState('practice');
   const [session, setSession] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [selectedAnswer, setSelectedAnswer] = useState('');
@@ -633,50 +502,32 @@ const PracticeSession = () => {
   const [upgradeData, setUpgradeData] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  // Initialize CSRF token on mount
-  useEffect(() => {
-    const initCSRF = async () => {
-      try {
-        await fetchCSRFToken();
-      } catch (error) {
-        console.warn('CSRF initialization failed:', error);
-      }
-    };
-    initCSRF();
-    window.scrollTo(0, 0);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'practice') {
-      fetchSessionData();
-    }
-  }, [sessionId, activeTab]);
-
+  // ============================================================
+  // FUNCTIONS DECLARED BEFORE EFFECTS
+  // ============================================================
   const fetchSessionData = async () => {
     try {
       setLoading(true);
       const questionResponse = await api.get(
         `/api/exams/sessions/${sessionId}/current_question/`
       );
-      
-      console.log('Session data response:', questionResponse.data);
-      
+
       setCurrentQuestion(questionResponse.data.question);
       setQuestionIndex(questionResponse.data.question_index);
       setTotalQuestions(questionResponse.data.total_questions);
-      
+
       if (questionResponse.data.has_been_answered) {
         setSelectedAnswer(questionResponse.data.previous_answer || '');
       }
-      
+
       if (questionResponse.data.session) {
         setSession(questionResponse.data.session);
       }
-      
+
       setLoading(false);
     } catch (err) {
       console.error('Error loading session:', err.response || err);
-      
+
       if (err.response?.status === 400 && err.response?.data?.error === 'Session already completed') {
         fetchSessionSummary();
       } else {
@@ -689,11 +540,8 @@ const PracticeSession = () => {
   const fetchSessionSummary = async () => {
     try {
       setLoading(true);
-      console.log('Fetching session summary for session:', sessionId);
-      
       const response = await api.post(`/api/exams/sessions/${sessionId}/complete_session/`);
-      console.log('FULL Session summary response:', JSON.stringify(response.data, null, 2));
-      
+
       if (response.data) {
         const summaryData = {
           session: response.data.session || response.data,
@@ -706,20 +554,16 @@ const PracticeSession = () => {
           time_spent_seconds: response.data.time_spent_seconds || response.data.session?.time_spent_seconds || 0,
           total_points: response.data.total_points || (response.data.correct * 25) || 0
         };
-        
-        console.log('Processed summary data:', summaryData);
         setSessionSummary(summaryData);
         setSessionCompleted(true);
       }
       setLoading(false);
     } catch (err) {
       console.error('Error fetching summary:', err.response || err);
-      
+
       if (err.response?.status === 400 && err.response?.data?.error === 'Session already completed') {
         try {
           const sessionResponse = await api.get(`/api/exams/sessions/${sessionId}/`);
-          console.log('Direct session fetch:', sessionResponse.data);
-          
           const sessionData = sessionResponse.data;
           const summaryData = {
             session: sessionData,
@@ -732,8 +576,6 @@ const PracticeSession = () => {
             time_spent_seconds: sessionData.time_spent_seconds || 0,
             total_points: (sessionData.correct_answers || 0) * 25
           };
-          
-          console.log('Processed fallback summary:', summaryData);
           setSessionSummary(summaryData);
           setSessionCompleted(true);
         } catch (sessionErr) {
@@ -764,7 +606,7 @@ const PracticeSession = () => {
     try {
       setChecking(true);
       setError(null);
-      
+
       if (isTrial && bankId) {
         const response = await api.post(
           `/api/exams/question-banks/${bankId}/submit_answer_trial/`,
@@ -775,9 +617,7 @@ const PracticeSession = () => {
             session_id: parseInt(sessionId)
           }
         );
-        
-        console.log('Trial check answer response:', response.data);
-        
+
         setFeedback({
           ...response.data,
           is_correct: response.data.is_correct || false,
@@ -785,7 +625,7 @@ const PracticeSession = () => {
           points_earned: response.data.points_earned || 0
         });
         setShowFeedback(true);
-        
+
         if (response.data.trial_remaining !== undefined) {
           setTrialRemaining(response.data.trial_remaining);
         }
@@ -802,9 +642,7 @@ const PracticeSession = () => {
             time_spent_seconds: 30
           }
         );
-        
-        console.log('Check answer response:', response.data);
-        
+
         setFeedback({
           ...response.data,
           is_correct: response.data.is_correct || false,
@@ -812,14 +650,14 @@ const PracticeSession = () => {
           points_earned: response.data.points_earned || 0
         });
         setShowFeedback(true);
-        
+
         setSession(prev => prev ? {
           ...prev,
           correct_answers: response.data.is_correct ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
           wrong_answers: !response.data.is_correct ? (prev.wrong_answers || 0) + 1 : (prev.wrong_answers || 0),
         } : null);
       }
-      
+
       setChecking(false);
     } catch (err) {
       console.error('Error checking answer:', err.response || err);
@@ -838,10 +676,10 @@ const PracticeSession = () => {
       navigate(`/payment-plans?bank_id=${bankId}&subject=${encodeURIComponent(subjectName || '')}`);
       return;
     }
-    
+
     try {
       setLoading(true);
-      
+
       if (isTrial && trialRemaining !== null && trialRemaining <= 0) {
         setUpgradeData({
           message: "You've completed all free questions. Upgrade to continue!",
@@ -851,14 +689,12 @@ const PracticeSession = () => {
         setLoading(false);
         return;
       }
-      
+
       const response = await api.post(
         `/api/exams/sessions/${sessionId}/next_question/`,
         { is_trial: isTrial }
       );
-      
-      console.log('Next question response:', response.data);
-      
+
       if (response.data.status === 'moving to next question') {
         setCurrentQuestion(response.data.question);
         setQuestionIndex(response.data.question_index);
@@ -867,8 +703,6 @@ const PracticeSession = () => {
         setShowFeedback(false);
         setLoading(false);
       } else {
-        console.log('Session completed via next_question');
-        
         const summaryData = {
           session: response.data.session || response.data,
           total_questions: response.data.total_questions || response.data.session?.total_questions || totalQuestions,
@@ -880,15 +714,13 @@ const PracticeSession = () => {
           time_spent_seconds: response.data.time_spent_seconds || response.data.session?.time_spent_seconds || 0,
           total_points: response.data.total_points || (response.data.correct * 25) || 0
         };
-        
-        console.log('Processed summary from next_question:', summaryData);
         setSessionSummary(summaryData);
         setSessionCompleted(true);
         setLoading(false);
       }
     } catch (err) {
       console.error('Error moving to next question:', err.response || err);
-      
+
       if (err.response?.status === 400 && err.response?.data?.error === 'Session already completed') {
         await fetchSessionSummary();
       } else {
@@ -904,7 +736,7 @@ const PracticeSession = () => {
       const response = await api.post(
         `/api/exams/sessions/${sessionId}/skip_question/`
       );
-      
+
       if (response.data.has_next) {
         await fetchSessionData();
       } else {
@@ -921,13 +753,34 @@ const PracticeSession = () => {
     navigate(`/practice/${sessionId}/review`);
   };
 
-  // Loading state for practice tab
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+  useEffect(() => {
+    const initCSRF = async () => {
+      try {
+        await fetchCSRFToken();
+      } catch (error) {
+        console.warn('CSRF initialization failed:', error);
+      }
+    };
+    initCSRF();
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'practice') {
+      fetchSessionData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, activeTab]);
+
   if (loading && !sessionCompleted && activeTab === 'practice') {
     return (
-      <div style={{ 
-        minHeight: '80vh', 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
         width: '100%'
       }}>
@@ -956,7 +809,7 @@ const PracticeSession = () => {
                   {upgradeData?.message || "You've completed all free questions. Upgrade to continue practicing!"}
                 </p>
                 <div className="d-grid gap-2">
-                  <button 
+                  <button
                     className="btn btn-warning btn-lg"
                     onClick={() => navigate(`/payment-plans?bank_id=${bankId}&subject=${encodeURIComponent(subjectName || '')}`)}
                   >
@@ -977,8 +830,8 @@ const PracticeSession = () => {
 
   if (sessionCompleted && activeTab === 'practice') {
     return (
-      <SessionSummary 
-        summary={sessionSummary} 
+      <SessionSummary
+        summary={sessionSummary}
         onReview={handleReviewWrongAnswers}
         onNewPractice={() => navigate('/dashboard')}
         isTrial={isTrial}
@@ -1009,7 +862,6 @@ const PracticeSession = () => {
     <div className="container-fluid py-4" style={{ backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
       <div className="row">
         <div className="col-md-10 mx-auto">
-          {/* Trial Alert */}
           {isTrial && activeTab === 'practice' && (
             <div className="alert alert-info mb-4">
               <div className="d-flex justify-content-between align-items-center">
@@ -1025,7 +877,6 @@ const PracticeSession = () => {
             </div>
           )}
 
-          {/* Subject Header */}
           <div className="text-center mb-4">
             <h3 className="text-primary fw-bold">
               <i className="fas fa-graduation-cap me-2"></i>
@@ -1033,246 +884,193 @@ const PracticeSession = () => {
             </h3>
           </div>
 
-          {/* Progress Bar - Only for practice tab */}
           {activeTab === 'practice' && !sessionCompleted && (
             <ProgressBar current={questionIndex + 1} total={isTrial ? 5 : totalQuestions} />
           )}
 
-       
-       {/* Modern Tab Navigation */}
-      <div className="card shadow-sm border-0 mb-4">
-        <div className="card-body p-0">
-          {/* Seamless Tab Navigation */}
-          <div style={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            borderRadius: '16px',
-            padding: '4px',
-            marginBottom: '0',
-          }}>
-            <div style={{
-              display: 'flex',
-              backgroundColor: '#ffffff',
-              borderRadius: '13px',
-              overflow: 'hidden',
-            }}>
-              {/* Practice Tab */}
-              <button
-                onClick={() => setActiveTab('practice')}
-                style={{
-                  flex: 1,
-                  padding: '14px 20px',
-                  fontSize: '0.95rem',
-                  fontWeight: '600',
-                  border: 'none',
-                  outline: 'none',
-                  backgroundColor: activeTab === 'practice' ? '#0d6efd' : 'transparent',
-                  color: activeTab === 'practice' ? '#ffffff' : '#2d3748',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
+          <div className="card shadow-sm border-0 mb-4">
+            <div className="card-body p-0">
+              <div style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: '16px',
+                padding: '4px',
+                marginBottom: '0',
+              }}>
+                <div style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  borderRight: '1px solid #e2e8f0',
-                  position: 'relative',
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'practice') {
-                    e.target.style.backgroundColor = '#f7fafc';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'practice') {
-                    e.target.style.backgroundColor = 'transparent';
-                  }
-                }}
-              >
-                <span style={{ fontSize: '1.2rem' }}>📝</span>
-                <span style={{ 
-                  color: activeTab === 'practice' ? '#ffffff' : '#2d3748',
-                  transition: 'color 0.3s ease'
-                }}>Practice</span>
+                  backgroundColor: '#ffffff',
+                  borderRadius: '13px',
+                  overflow: 'hidden',
+                }}>
+                  <button
+                    onClick={() => setActiveTab('practice')}
+                    style={{
+                      flex: 1,
+                      padding: '14px 20px',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      border: 'none',
+                      outline: 'none',
+                      backgroundColor: activeTab === 'practice' ? '#0d6efd' : 'transparent',
+                      color: activeTab === 'practice' ? '#ffffff' : '#2d3748',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      borderRight: '1px solid #e2e8f0',
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.2rem' }}>📝</span>
+                    <span>Practice</span>
+                    {activeTab === 'practice' && (
+                      <span style={{
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        color: '#ffffff',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.7rem',
+                        fontWeight: '600',
+                      }}>Active</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('notes')}
+                    style={{
+                      flex: 1,
+                      padding: '14px 20px',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      border: 'none',
+                      outline: 'none',
+                      backgroundColor: activeTab === 'notes' ? '#059669' : 'transparent',
+                      color: activeTab === 'notes' ? '#ffffff' : '#2d3748',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      borderRight: '1px solid #e2e8f0',
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.2rem' }}>📖</span>
+                    <span>Study Notes</span>
+                    {activeTab === 'notes' && (
+                      <span style={{
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        color: '#ffffff',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.7rem',
+                        fontWeight: '600',
+                      }}>Active</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('past-questions')}
+                    style={{
+                      flex: 1,
+                      padding: '14px 20px',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      border: 'none',
+                      outline: 'none',
+                      backgroundColor: activeTab === 'past-questions' ? '#7c3aed' : 'transparent',
+                      color: activeTab === 'past-questions' ? '#ffffff' : '#2d3748',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      position: 'relative',
+                    }}
+                  >
+                    <span style={{ fontSize: '1.2rem' }}>🗂️</span>
+                    <span>Past Questions</span>
+                    {activeTab === 'past-questions' && (
+                      <span style={{
+                        backgroundColor: 'rgba(255,255,255,0.2)',
+                        color: '#ffffff',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.7rem',
+                        fontWeight: '600',
+                      }}>Active</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4">
                 {activeTab === 'practice' && (
-                  <span style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    color: '#ffffff',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '0.7rem',
-                    fontWeight: '600',
-                  }}>Active</span>
-                )}
-              </button>
+                  <div className="tab-content">
+                    <QuestionDisplay
+                      question={currentQuestion}
+                      selectedAnswer={selectedAnswer}
+                      onAnswerSelect={handleAnswerSelect}
+                      showFeedback={showFeedback}
+                      feedback={feedback}
+                      disabled={showFeedback}
+                    />
 
-              {/* Study Notes Tab */}
-              <button
-                onClick={() => setActiveTab('notes')}
-                style={{
-                  flex: 1,
-                  padding: '14px 20px',
-                  fontSize: '0.95rem',
-                  fontWeight: '600',
-                  border: 'none',
-                  outline: 'none',
-                  backgroundColor: activeTab === 'notes' ? '#059669' : 'transparent',
-                  color: activeTab === 'notes' ? '#ffffff' : '#2d3748',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  borderRight: '1px solid #e2e8f0',
-                  position: 'relative',
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'notes') {
-                    e.target.style.backgroundColor = '#f7fafc';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'notes') {
-                    e.target.style.backgroundColor = 'transparent';
-                  }
-                }}
-              >
-                <span style={{ fontSize: '1.2rem' }}>📖</span>
-                <span style={{ 
-                  color: activeTab === 'notes' ? '#ffffff' : '#2d3748',
-                  transition: 'color 0.3s ease'
-                }}>Study Notes</span>
+                    {!showFeedback ? (
+                      <div className="d-flex justify-content-between mt-4">
+                        <button className="btn btn-outline-secondary" onClick={handleSkipQuestion} disabled={loading || checking}>
+                          Skip Question
+                        </button>
+                        <button className="btn btn-primary" onClick={handleCheckAnswer} disabled={!selectedAnswer || loading || checking}>
+                          {checking ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                              Checking...
+                            </>
+                          ) : 'Check Answer'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-4">
+                        <AnswerFeedback feedback={feedback} />
+                        <div className="d-flex justify-content-end mt-3">
+                          <button className="btn btn-success btn-lg" onClick={handleNextQuestion} disabled={loading}>
+                            {questionIndex + 1 < totalQuestions ? (
+                              <>Next Question <i className="fas fa-arrow-right ms-2"></i></>
+                            ) : (
+                              <>Complete Session <i className="fas fa-check ms-2"></i></>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {activeTab === 'notes' && (
-                  <span style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    color: '#ffffff',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '0.7rem',
-                    fontWeight: '600',
-                  }}>Active</span>
+                  <div className="tab-content">
+                    <StudyNotes
+                      subjectName={subjectName}
+                      subjectId={subjectId}
+                    />
+                  </div>
                 )}
-              </button>
 
-              {/* Past Questions Tab */}
-              <button
-                onClick={() => setActiveTab('past-questions')}
-                style={{
-                  flex: 1,
-                  padding: '14px 20px',
-                  fontSize: '0.95rem',
-                  fontWeight: '600',
-                  border: 'none',
-                  outline: 'none',
-                  backgroundColor: activeTab === 'past-questions' ? '#7c3aed' : 'transparent',
-                  color: activeTab === 'past-questions' ? '#ffffff' : '#2d3748',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  position: 'relative',
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== 'past-questions') {
-                    e.target.style.backgroundColor = '#f7fafc';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== 'past-questions') {
-                    e.target.style.backgroundColor = 'transparent';
-                  }
-                }}
-              >
-                <span style={{ fontSize: '1.2rem' }}>🗂️</span>
-                <span style={{ 
-                  color: activeTab === 'past-questions' ? '#ffffff' : '#2d3748',
-                  transition: 'color 0.3s ease'
-                }}>Past Questions</span>
                 {activeTab === 'past-questions' && (
-                  <span style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    color: '#ffffff',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '0.7rem',
-                    fontWeight: '600',
-                  }}>Active</span>
+                  <div className="tab-content">
+                    <PastQuestions
+                      subjectName={subjectName}
+                      subjectId={subjectId}
+                      examCategory={examCategory}
+                    />
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
           </div>
 
-          {/* Tab Content */}
-          <div className="p-4">
-            {/* Practice Tab Content */}
-            {activeTab === 'practice' && (
-              <div className="tab-content">
-                <QuestionDisplay 
-                  question={currentQuestion}
-                  selectedAnswer={selectedAnswer}
-                  onAnswerSelect={handleAnswerSelect}
-                  showFeedback={showFeedback}
-                  feedback={feedback}
-                  disabled={showFeedback}
-                />
-
-                {!showFeedback ? (
-                  <div className="d-flex justify-content-between mt-4">
-                    <button className="btn btn-outline-secondary" onClick={handleSkipQuestion} disabled={loading || checking}>
-                      Skip Question
-                    </button>
-                    <button className="btn btn-primary" onClick={handleCheckAnswer} disabled={!selectedAnswer || loading || checking}>
-                      {checking ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                          Checking...
-                        </>
-                      ) : 'Check Answer'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-4">
-                    <AnswerFeedback feedback={feedback} />
-                    <div className="d-flex justify-content-end mt-3">
-                      <button className="btn btn-success btn-lg" onClick={handleNextQuestion} disabled={loading}>
-                        {questionIndex + 1 < totalQuestions ? (
-                          <>Next Question <i className="fas fa-arrow-right ms-2"></i></>
-                        ) : (
-                          <>Complete Session <i className="fas fa-check ms-2"></i></>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Study Notes Tab Content */}
-            {activeTab === 'notes' && (
-              <div className="tab-content">
-                <StudyNotes 
-                  subjectName={subjectName} 
-                  subjectId={subjectId} 
-                />
-              </div>
-            )}
-
-            {/* Past Questions Tab Content */}
-            {activeTab === 'past-questions' && (
-              <div className="tab-content">
-                <PastQuestions 
-                  subjectName={subjectName} 
-                  subjectId={subjectId}
-                  examCategory={examCategory}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-          {/* Stats Cards - Only for practice tab */}
           {activeTab === 'practice' && !sessionCompleted && (
             <div className="row g-3">
               <div className="col-md-4">
@@ -1304,77 +1102,67 @@ const PracticeSession = () => {
         </div>
       </div>
 
-      {/* Add custom styles */}
-     <style jsx>{`
-    /* Remove all outlines and focus styles from all buttons */
-    button:focus,
-    button:focus-visible,
-    button:active,
-    button:focus-within {
-      outline: none !important;
-      box-shadow: none !important;
-      border: none !important;
-    }
-    
-    button::-moz-focus-inner {
-      border: 0;
-    }
-    
-    /* Remove default button outline in WebKit browsers */
-    button {
-      -webkit-tap-highlight-color: transparent;
-      -webkit-focus-ring-color: transparent;
-    }
-    
-    /* Smooth animation for tab content */
-    .tab-content {
-      animation: fadeSlideIn 0.4s ease-out;
-    }
-    
-    @keyframes fadeSlideIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    /* Remove card default borders and outlines */
-    .card {
-      border: none !important;
-      outline: none !important;
-    
-    }
-    
-    .card-body {
-      border: none !important;
-      outline: none !important;
-    }
-    
-    .card-header {
-      border: none !important;
-      outline: none !important;
-    }
-    
-    /* Tab hover transition */
-    .tab-container button {
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    
-    /* Active tab subtle scale effect */
-    .tab-container button:active {
-      transform: scale(0.98);
-    }
-    
-    /* Ensure smooth color transitions */
-    .tab-container button span {
-      transition: color 0.3s ease;
-    }
-  `}</style>
+      <style jsx>{`
+        button:focus,
+        button:focus-visible,
+        button:active,
+        button:focus-within {
+          outline: none !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
 
+        button::-moz-focus-inner {
+          border: 0;
+        }
+
+        button {
+          -webkit-tap-highlight-color: transparent;
+          -webkit-focus-ring-color: transparent;
+        }
+
+        .tab-content {
+          animation: fadeSlideIn 0.4s ease-out;
+        }
+
+        @keyframes fadeSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .card {
+          border: none !important;
+          outline: none !important;
+        }
+
+        .card-body {
+          border: none !important;
+          outline: none !important;
+        }
+
+        .card-header {
+          border: none !important;
+          outline: none !important;
+        }
+
+        .tab-container button {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab-container button:active {
+          transform: scale(0.98);
+        }
+
+        .tab-container button span {
+          transition: color 0.3s ease;
+        }
+      `}</style>
     </div>
   );
 };

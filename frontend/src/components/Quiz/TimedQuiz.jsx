@@ -1,83 +1,18 @@
-import api from '../../api/client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
-
-// ============================================================
-// CREATE PROPERLY CONFIGURED AXIOS INSTANCE
-// ============================================================
-const api = axios.create({
-  baseURL: '',
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
- }
-});
-
-// Function to get CSRF token from cookie
-const getCSRFTokenFromCookie = () => {
-  const name = 'csrftoken';
-  const cookies = document.cookie.split(';');
-  for (let i = 0; i < cookies.length; i++) {
-    const cookie = cookies[i].trim();
-    if (cookie.startsWith(name + '=')) {
-      return decodeURIComponent(cookie.substring(name.length + 1));
-    }
-  }
-  return null;
-};
-
-// Function to fetch CSRF token from server
-const fetchCSRFToken = async () => {
-  try {
-    const response = await api.get('/api/exams/csrf/');
-    if (response.data.csrfToken) {
-      return response.data.csrfToken;
-    }
-  } catch (error) {
-    console.log('Could not fetch CSRF token, will try existing cookie');
-  }
-  return getCSRFTokenFromCookie();
-};
-
-// Request interceptor to add CSRF token and auth token
-api.interceptors.request.use(
-  async config => {
-    if (config.method !== 'get') {
-      let csrfToken = getCSRFTokenFromCookie();
-      if (!csrfToken) {
-        csrfToken = await fetchCSRFToken();
-      }
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken;
-      }
-    }
-    
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  error => {
-    return Promise.reject(error);
-  }
-);
+import api, { fetchCSRFToken } from '../../api/client';
 
 const TimedQuiz = () => {
   const { productId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const categoryId = searchParams.get('category');
-  
+
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -88,10 +23,165 @@ const TimedQuiz = () => {
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  
+
   const timerRef = useRef(null);
   const textareaRef = useRef(null);
 
+  // ============================================================
+  // FUNCTIONS DECLARED BEFORE EFFECTS
+  // ============================================================
+  const resolveProductAndFetchQuestions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let actualProductId = null;
+      let productData = null;
+
+      try {
+        const productResponse = await api.get(`/api/interview/products/${productId}/`);
+        productData = productResponse.data;
+        actualProductId = productData.id;
+        setProduct(productData);
+      } catch {
+        console.log('Could not fetch product by slug, trying as numeric ID...');
+        if (!isNaN(productId)) {
+          actualProductId = parseInt(productId);
+        }
+      }
+
+      let questionsData = [];
+
+      if (actualProductId) {
+        try {
+          const response = await api.get(`/api/quiz/product/${actualProductId}/questions/`);
+          questionsData = response.data.questions || response.data.results || [];
+        } catch {
+          console.log('Product questions endpoint failed, trying alternatives...');
+        }
+      }
+
+      if (questionsData.length === 0 && categoryId) {
+        try {
+          const response = await api.get(`/api/quiz/categories/${categoryId}/questions/`);
+          questionsData = response.data.questions || response.data.results || [];
+        } catch {
+          console.log('Category questions endpoint failed...');
+        }
+      }
+
+      if (questionsData.length === 0) {
+        try {
+          const response = await api.get('/api/quiz/questions/');
+          questionsData = response.data.results || response.data || [];
+        } catch {
+          console.log('All questions endpoint failed...');
+        }
+      }
+
+      if (questionsData.length === 0) {
+        try {
+          const response = await api.get('/api/quiz/questions/random/?count=10');
+          questionsData = response.data.results || response.data || [];
+        } catch {
+          console.log('Random questions endpoint failed...');
+        }
+      }
+
+      if (!Array.isArray(questionsData)) {
+        questionsData = [];
+      }
+
+      if (questionsData.length > 10) {
+        questionsData = questionsData.slice(0, 10);
+      }
+
+      if (questionsData.length === 0) {
+        setError('No questions available for this quiz. Please try another category.');
+        toast.error('No questions available for this quiz');
+        setLoading(false);
+        return;
+      }
+
+      const initialAnswers = {};
+      questionsData.forEach(q => {
+        initialAnswers[q.id] = '';
+      });
+
+      if (!productData) {
+        setProduct({ name: productId || 'Quiz', slug: productId });
+      }
+
+      setQuestions(questionsData);
+      setAnswers(initialAnswers);
+      setLoading(false);
+
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+      setError(error.response?.data?.message || 'Failed to load quiz questions. Please try again.');
+      toast.error('Failed to load quiz questions');
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitQuiz = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    const unansweredCount = questions.filter(q => !answers[q.id]?.trim()).length;
+    if (unansweredCount > 0 && !quizCompleted) {
+      const confirm = window.confirm(
+        `You have ${unansweredCount} unanswered question(s). Are you sure you want to submit?`
+      );
+      if (!confirm) {
+        if (quizStarted && !quizCompleted) {
+          timerRef.current = setInterval(() => {
+            setTimeLeft(prev => {
+              if (prev <= 1) {
+                clearInterval(timerRef.current);
+                handleSubmitQuiz();
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+        return;
+      }
+    }
+
+    try {
+      setLoading(true);
+
+      await fetchCSRFToken();
+
+      const formattedAnswers = questions.map(q => ({
+        question_id: q.id,
+        user_answer: answers[q.id] || ''
+      }));
+
+      const minutes = Math.floor((600 - timeLeft) / 60);
+      const seconds = (600 - timeLeft) % 60;
+      const timeTaken = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+      const response = await api.post('/api/quiz/submit-timed/', {
+        product_id: product?.id || productId,
+        answers: formattedAnswers,
+        time_taken: timeTaken
+      });
+
+      setResults(response.data);
+      setQuizCompleted(true);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      toast.error(error.response?.data?.message || 'Failed to submit quiz');
+      setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // EFFECTS
+  // ============================================================
   // Initialize CSRF token on mount
   useEffect(() => {
     const initCSRF = async () => {
@@ -105,14 +195,18 @@ const TimedQuiz = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  useEffect(() => {
-    resolveProductAndFetchQuestions();
+    useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      resolveProductAndFetchQuestions();
+    }, 0);
     return () => {
+      clearTimeout(timeoutId);
       if (timerRef.current) clearInterval(timerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
-  useEffect(() => {
+    useEffect(() => {
     if (quizStarted && !quizCompleted && questions.length > 0) {
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
@@ -126,101 +220,8 @@ const TimedQuiz = () => {
       }, 1000);
     }
     return () => clearInterval(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizStarted, quizCompleted, questions.length]);
-
-  const resolveProductAndFetchQuestions = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let actualProductId = null;
-      let productData = null;
-      
-      try {
-        const productResponse = await api.get(`/api/interview/products/${productId}/`);
-        productData = productResponse.data;
-        actualProductId = productData.id;
-        setProduct(productData);
-      } catch (err) {
-        console.log('Could not fetch product by slug, trying as numeric ID...');
-        if (!isNaN(productId)) {
-          actualProductId = parseInt(productId);
-        }
-      }
-      
-      let questionsData = [];
-      
-      if (actualProductId) {
-        try {
-          const response = await api.get(`/api/quiz/product/${actualProductId}/questions/`);
-          questionsData = response.data.questions || response.data.results || [];
-        } catch (err) {
-          console.log('Product questions endpoint failed, trying alternatives...');
-        }
-      }
-      
-      if (questionsData.length === 0 && categoryId) {
-        try {
-          const response = await api.get(`/api/quiz/categories/${categoryId}/questions/`);
-          questionsData = response.data.questions || response.data.results || [];
-        } catch (err) {
-          console.log('Category questions endpoint failed...');
-        }
-      }
-      
-      if (questionsData.length === 0) {
-        try {
-          const response = await api.get('/api/quiz/questions/');
-          questionsData = response.data.results || response.data || [];
-        } catch (err) {
-          console.log('All questions endpoint failed...');
-        }
-      }
-      
-      if (questionsData.length === 0) {
-        try {
-          const response = await api.get('/api/quiz/questions/random/?count=10');
-          questionsData = response.data.results || response.data || [];
-        } catch (err) {
-          console.log('Random questions endpoint failed...');
-        }
-      }
-      
-      if (!Array.isArray(questionsData)) {
-        questionsData = [];
-      }
-      
-      if (questionsData.length > 10) {
-        questionsData = questionsData.slice(0, 10);
-      }
-      
-      if (questionsData.length === 0) {
-        setError('No questions available for this quiz. Please try another category.');
-        toast.error('No questions available for this quiz');
-        setLoading(false);
-        return;
-      }
-      
-      const initialAnswers = {};
-      questionsData.forEach(q => {
-        initialAnswers[q.id] = '';
-      });
-      
-      if (!productData) {
-        setProduct({ name: productId || 'Quiz', slug: productId });
-      }
-      
-      setQuestions(questionsData);
-      setAnswers(initialAnswers);
-      setLoading(false);
-      
-    } catch (error) {
-      console.error('Error fetching questions:', error);
-      setError(error.response?.data?.message || 'Failed to load quiz questions. Please try again.');
-      toast.error('Failed to load quiz questions');
-      setLoading(false);
-    }
-  };
 
   const handleStartQuiz = () => {
     if (questions.length === 0) {
@@ -252,61 +253,6 @@ const TimedQuiz = () => {
     }
   };
 
-  const handleSubmitQuiz = async () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    
-    const unansweredCount = questions.filter(q => !answers[q.id]?.trim()).length;
-    if (unansweredCount > 0 && !quizCompleted) {
-      const confirm = window.confirm(
-        `You have ${unansweredCount} unanswered question(s). Are you sure you want to submit?`
-      );
-      if (!confirm) {
-        if (quizStarted && !quizCompleted) {
-          timerRef.current = setInterval(() => {
-            setTimeLeft(prev => {
-              if (prev <= 1) {
-                clearInterval(timerRef.current);
-                handleSubmitQuiz();
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-        return;
-      }
-    }
-
-    try {
-      setLoading(true);
-      
-      await fetchCSRFToken();
-      
-      const formattedAnswers = questions.map(q => ({
-        question_id: q.id,
-        user_answer: answers[q.id] || ''
-      }));
-
-      const minutes = Math.floor((600 - timeLeft) / 60);
-      const seconds = (600 - timeLeft) % 60;
-      const timeTaken = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-      const response = await api.post('/api/quiz/submit-timed/', {
-        product_id: product?.id || productId,
-        answers: formattedAnswers,
-        time_taken: timeTaken
-      });
-
-      setResults(response.data);
-      setQuizCompleted(true);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error submitting quiz:', error);
-      toast.error(error.response?.data?.message || 'Failed to submit quiz');
-      setLoading(false);
-    }
-  };
-
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -319,7 +265,6 @@ const TimedQuiz = () => {
     return (answered / questions.length) * 100;
   };
 
-  // ===== FIX: Full-height loading state =====
   if (loading) {
     return (
       <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
@@ -355,7 +300,7 @@ const TimedQuiz = () => {
                 </div>
                 <h1 className="display-5 fw-bold mb-3" style={{ color: '#4400ff' }}>Timed Quiz: {product?.name || 'Practice Quiz'}</h1>
                 <p className="lead mb-4">Test your knowledge under timed conditions</p>
-                
+
                 <div className="quiz-info bg-light p-4 rounded-4 mb-4">
                   <div className="row g-3">
                     <div className="col-4"><h5 className="fw-bold">{questions.length}</h5><small className="text-muted">Questions</small></div>
@@ -483,7 +428,7 @@ const TimedQuiz = () => {
   }
 
   const currentQuestion = questions[currentQuestionIndex];
-  
+
   if (!currentQuestion) {
     return (
       <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -562,7 +507,6 @@ const TimedQuiz = () => {
 
       <style>
         {`
-          /* ===== REMOVE ALL OUTLINES ===== */
           *:focus, *:focus-visible, *:active,
           button:focus, button:focus-visible,
           a:focus, a:focus-visible,
@@ -584,7 +528,7 @@ const TimedQuiz = () => {
           .progress-circle { transition: all 0.3s ease; }
           .answer-card { transition: transform 0.2s ease; }
           .answer-card:hover { transform: translateX(5px); }
-          
+
           @media (max-width: 768px) {
             .timer-display .badge { font-size: 1rem !important; padding: 0.5rem !important; }
           }

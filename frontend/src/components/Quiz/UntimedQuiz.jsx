@@ -1,80 +1,16 @@
-import api from '../../api/client';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-import { motion } from 'framer-motion';
-import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
-
-// ============================================================
-// CREATE PROPERLY CONFIGURED AXIOS INSTANCE
-// ============================================================
-const api = axios.create({
-  baseURL: '',
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-  }
-});
-
-const getCSRFTokenFromCookie = () => {
-  const name = 'csrftoken';
-  const cookies = document.cookie.split(';');
-  for (let i = 0; i < cookies.length; i++) {
-    const cookie = cookies[i].trim();
-    if (cookie.startsWith(name + '=')) {
-      return decodeURIComponent(cookie.substring(name.length + 1));
-    }
-  }
-  return null;
-};
-
-const fetchCSRFToken = async () => {
-  try {
-    const response = await api.get('/api/exams/csrf/');
-    if (response.data.csrfToken) {
-      return response.data.csrfToken;
-    }
-  } catch (error) {
-    console.log('Could not fetch CSRF token, will try existing cookie');
-  }
-  return getCSRFTokenFromCookie();
-};
-
-api.interceptors.request.use(
-  async config => {
-    if (config.method !== 'get') {
-      let csrfToken = getCSRFTokenFromCookie();
-      if (!csrfToken) {
-        csrfToken = await fetchCSRFToken();
-      }
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken;
-      }
-    }
-    
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  error => {
-    return Promise.reject(error);
-  }
-);
+import api, { fetchCSRFToken } from '../../api/client';
 
 const UntimedQuiz = () => {
   const { productId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  
+
   const categoryId = searchParams.get('category');
-  
+
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -88,6 +24,98 @@ const UntimedQuiz = () => {
   const [showHint, setShowHint] = useState(false);
   const [error, setError] = useState(null);
 
+  // ============================================================
+  // FUNCTIONS DECLARED BEFORE EFFECTS
+  // ============================================================
+  const loadCategoryQuestions = async (category) => {
+    try {
+      setLoading(true);
+
+      const response = await api.get(`/api/untimed-quiz/category/${category.id}/questions/`);
+
+      const responseData = response.data.results || response.data;
+      setSelectedCategory(responseData.category || category);
+
+      const questionsData = responseData.questions || [];
+
+      if (questionsData.length === 0) {
+        setError('No questions available for this category. Please add questions in the admin panel.');
+        toast.error('No questions available');
+        setLoading(false);
+        return;
+      }
+
+      setQuestions(questionsData);
+
+      const initialAnswers = {};
+      questionsData.forEach(q => {
+        initialAnswers[q.id] = '';
+      });
+      setAnswers(initialAnswers);
+
+      setCurrentQuestionIndex(0);
+      setQuizStarted(true);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading questions:', error);
+      toast.error('Failed to load questions');
+      setLoading(false);
+    }
+  };
+
+  const initializeQuiz = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let productData = null;
+      try {
+        const productResponse = await api.get(`/api/interview/products/${productId}/`);
+        productData = productResponse.data;
+        setProduct(productData);
+      } catch {
+        console.log('Could not fetch product by slug, setting default');
+      }
+
+      if (!productData) {
+        setProduct({ name: productId || 'Practice Quiz', slug: productId });
+      }
+
+      let categoriesData = [];
+      try {
+        const response = await api.get('/api/untimed-quiz/categories/');
+        categoriesData = response.data.results || response.data || [];
+      } catch {
+        console.log('Could not fetch untimed categories');
+      }
+
+      setCategories(categoriesData);
+
+      if (categoryId && categoriesData.length > 0) {
+        const matchedCategory = categoriesData.find(c => c.id === parseInt(categoryId));
+        if (matchedCategory) {
+          await loadCategoryQuestions(matchedCategory);
+          return;
+        }
+      }
+
+      if (categoriesData.length === 1) {
+        await loadCategoryQuestions(categoriesData[0]);
+        return;
+      }
+
+      setLoading(false);
+
+    } catch (error) {
+      console.error('Error:', error);
+      setError('Failed to load quiz. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // EFFECTS
+  // ============================================================
   useEffect(() => {
     const initCSRF = async () => {
       try {
@@ -102,93 +130,8 @@ const UntimedQuiz = () => {
 
   useEffect(() => {
     initializeQuiz();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
-
-  const initializeQuiz = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      let productData = null;
-      try {
-        const productResponse = await api.get(`/api/interview/products/${productId}/`);
-        productData = productResponse.data;
-        setProduct(productData);
-      } catch (err) {
-        console.log('Could not fetch product by slug, setting default');
-      }
-      
-      if (!productData) {
-        setProduct({ name: productId || 'Practice Quiz', slug: productId });
-      }
-      
-      let categoriesData = [];
-      try {
-        const response = await api.get('/api/untimed-quiz/categories/');
-        categoriesData = response.data.results || response.data || [];
-      } catch (err) {
-        console.log('Could not fetch untimed categories');
-      }
-      
-      setCategories(categoriesData);
-      
-      if (categoryId && categoriesData.length > 0) {
-        const matchedCategory = categoriesData.find(c => c.id === parseInt(categoryId));
-        if (matchedCategory) {
-          await loadCategoryQuestions(matchedCategory);
-          return;
-        }
-      }
-      
-      if (categoriesData.length === 1) {
-        await loadCategoryQuestions(categoriesData[0]);
-        return;
-      }
-      
-      setLoading(false);
-      
-    } catch (error) {
-      console.error('Error:', error);
-      setError('Failed to load quiz. Please try again.');
-      setLoading(false);
-    }
-  };
-
-  const loadCategoryQuestions = async (category) => {
-    try {
-      setLoading(true);
-      
-      const response = await api.get(`/api/untimed-quiz/category/${category.id}/questions/`);
-      
-      const responseData = response.data.results || response.data;
-      setSelectedCategory(responseData.category || category);
-      
-      const questionsData = responseData.questions || [];
-      
-      if (questionsData.length === 0) {
-        setError('No questions available for this category. Please add questions in the admin panel.');
-        toast.error('No questions available');
-        setLoading(false);
-        return;
-      }
-      
-      setQuestions(questionsData);
-      
-      const initialAnswers = {};
-      questionsData.forEach(q => {
-        initialAnswers[q.id] = '';
-      });
-      setAnswers(initialAnswers);
-      
-      setCurrentQuestionIndex(0);
-      setQuizStarted(true);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading questions:', error);
-      toast.error('Failed to load questions');
-      setLoading(false);
-    }
-  };
 
   const handleCategorySelect = (category) => {
     loadCategoryQuestions(category);
@@ -227,7 +170,7 @@ const UntimedQuiz = () => {
     try {
       setLoading(true);
       await fetchCSRFToken();
-      
+
       const formattedAnswers = questions.map(q => ({
         question_id: q.id,
         user_answer: answers[q.id] || ''
@@ -403,7 +346,7 @@ const UntimedQuiz = () => {
   }
 
   const currentQuestion = questions[currentQuestionIndex];
-  
+
   if (!currentQuestion) {
     return (
       <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -479,7 +422,6 @@ const UntimedQuiz = () => {
 
       <style>
         {`
-          /* ===== REMOVE ALL OUTLINES ===== */
           *:focus, *:focus-visible, *:active,
           button:focus, button:focus-visible,
           a:focus, a:focus-visible,

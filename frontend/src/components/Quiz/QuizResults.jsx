@@ -1,6 +1,5 @@
 import React from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 
 // NOTE ON THIS COMPONENT
 //
@@ -61,11 +60,7 @@ const QuizResults = () => {
     <div className="quiz-results container py-5" style={{ minHeight: '70vh' }}>
       <div className="row justify-content-center">
         <div className="col-lg-8">
-          <motion.div
-            className="card border-0 shadow-sm rounded-4 p-4"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <div className="card border-0 shadow-sm rounded-4 p-4">
             <div className="text-center mb-4">
               <h2 className="fw-bold mb-1">Quiz Complete</h2>
               {results.time_taken && (
@@ -149,7 +144,7 @@ const QuizResults = () => {
                 Dashboard
               </Link>
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </div>

@@ -1,92 +1,14 @@
-import api from '../../api/client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-
-// Create axios instance with proper configuration
-const api = axios.create({
-  baseURL: '',
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-  }
-});
-
-// Function to get CSRF token from cookie
-const getCSRFTokenFromCookie = () => {
-  const name = 'csrftoken';
-  const cookies = document.cookie.split(';');
-  for (let i = 0; i < cookies.length; i++) {
-    const cookie = cookies[i].trim();
-    if (cookie.startsWith(name + '=')) {
-      return decodeURIComponent(cookie.substring(name.length + 1));
-    }
-  }
-  return null;
-};
-
-// Function to fetch CSRF token from server
-const fetchCSRFToken = async () => {
-  try {
-    const response = await api.get('/api/exams/csrf/');
-    if (response.data.csrfToken) {
-      return response.data.csrfToken;
-    }
-  } catch (error) {
-    console.log('Could not fetch CSRF token, will try existing cookie');
-  }
-  return getCSRFTokenFromCookie();
-};
-
-// Request interceptor to add CSRF token
-api.interceptors.request.use(
-  async config => {
-    if (config.method !== 'get') {
-      let csrfToken = getCSRFTokenFromCookie();
-      if (!csrfToken) {
-        csrfToken = await fetchCSRFToken();
-      }
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken;
-      }
-    }
-    
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    console.log(`[${config.method?.toUpperCase()}] ${config.url}`);
-    return config;
-  },
-  error => {
-    console.error('Request interceptor error:', error);
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor for debugging
-api.interceptors.response.use(
-  response => {
-    console.log(`[SUCCESS] ${response.config.url} - Status: ${response.status}`);
-    return response;
-  },
-  error => {
-    if (error.response) {
-      console.error(`[ERROR] ${error.config?.url} - Status: ${error.response.status}`, error.response.data);
-    }
-    return Promise.reject(error);
-  }
-);
+import api, { fetchCSRFToken } from '../../api/client';
 
 const PracticeHome = () => {
   const navigate = useNavigate();
   const { examType, subjectName } = useParams();
   const [searchParams] = useSearchParams();
-  
+
   const isTrial = searchParams.get('trial') === 'true';
-  
+
   const [loading, setLoading] = useState(true);
   const [subjects, setSubjects] = useState([]);
   const [subjectProgress, setSubjectProgress] = useState({});
@@ -97,73 +19,12 @@ const PracticeHome = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  useEffect(() => {
-    const initCSRF = async () => {
-      try {
-        await fetchCSRFToken();
-        console.log('CSRF token initialized');
-      } catch (error) {
-        console.warn('CSRF initialization failed:', error);
-      }
-    };
-    initCSRF();
-    window.scrollTo(0, 0);
-  }, []);
-
-  const checkAuthStatus = useCallback(async () => {
-    try {
-      console.log('Checking authentication status...');
-      await fetchCSRFToken();
-      
-      const response = await api.get('/api/exams/auth/status/');
-      console.log('Auth status response:', response.data);
-      
-      if (response.data.is_authenticated) {
-        setIsAuthenticated(true);
-        console.log('✅ User is authenticated');
-        return true;
-      } else {
-        console.log('❌ User is NOT authenticated');
-        setIsAuthenticated(false);
-        return false;
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      setIsAuthenticated(false);
-      return false;
-    } finally {
-      setAuthChecked(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    const init = async () => {
-      const authenticated = await checkAuthStatus();
-      
-      if (!authenticated) {
-        console.log('Redirecting to login...');
-        sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
-        navigate('/login');
-        return;
-      }
-      
-      if (examType) {
-        await fetchData();
-      }
-      if (isTrial && subjectName) {
-        await fetchTrialStatus();
-      }
-    };
-    
-    init();
-  }, [examType, subjectName, isTrial, checkAuthStatus, navigate]);
-
+  // ============================================================
+  // FUNCTIONS DECLARED BEFORE EFFECTS
+  // ============================================================
   const fetchTrialStatus = async () => {
     try {
-      console.log('Fetching trial status...');
       const response = await api.get('/api/exams/trial/status/');
-      console.log('Trial status response:', response.data);
-      
       if (response.data && response.data.length > 0) {
         const subjectTrial = response.data.find(
           item => item.subject === subjectName
@@ -177,75 +38,18 @@ const PracticeHome = () => {
     }
   };
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('Fetching question banks for exam type:', examType);
-      
-      const response = await api.get('/api/exams/question-banks/', {
-        params: {
-          exam_category: examType
-        }
-      });
-      
-      const banks = response.data.results || response.data;
-      console.log('Banks found:', banks.length);
-      
-      if (banks.length > 0) {
-        const subjectMap = new Map();
-        
-        banks.forEach(bank => {
-          const name = bank.subject_name || bank.subject;
-          if (!name) return;
-          
-          if (!subjectMap.has(name)) {
-            subjectMap.set(name, {
-              name: name,
-              bank_id: bank.id,
-              subject_id: bank.subject,  // ✅ ADDED: Get subject ID from bank data
-              question_count: bank.question_count || 0,
-              is_subscribed: bank.is_subscribed || false,
-              free_trial_remaining: bank.free_trial_remaining !== undefined ? bank.free_trial_remaining : 5,
-              description: bank.description || ''
-            });
-          } else {
-            subjectMap.get(name).question_count += bank.question_count || 0;
-          }
-        });
-        
-        const subjectsList = Array.from(subjectMap.values());
-        setSubjects(subjectsList);
-        
-        await fetchPerformanceData(subjectsList);
-        generateRecommendedQuizzes(banks);
-      } else {
-        setSubjects([]);
-        setError('No subjects found. Please add question banks in the admin panel.');
-      }
-      
-      setLoading(false);
-    } catch (err) {
-      console.error('Error in fetchData:', err);
-      setError('Failed to load subjects. Please try again.');
-      setLoading(false);
-    }
-  };
-
   const fetchPerformanceData = async (subjectsList) => {
     try {
-      console.log('Fetching performance data...');
       const response = await api.get('/api/exams/performance/');
       const performances = response.data.results || response.data;
-      
+
       const progressMap = {};
-      
+
       subjectsList.forEach(subject => {
-        const perf = performances.find(p => 
+        const perf = performances.find(p =>
           p.subject_name === subject.name || p.subject === subject.name
         );
-        
+
         if (perf) {
           progressMap[subject.name] = {
             total_questions_attempted: perf.total_questions_attempted || 0,
@@ -264,7 +68,7 @@ const PracticeHome = () => {
           };
         }
       });
-      
+
       setSubjectProgress(progressMap);
     } catch (error) {
       console.log('Performance data not available:', error);
@@ -282,6 +86,13 @@ const PracticeHome = () => {
     }
   };
 
+  const determineDifficulty = (bank) => {
+    const name = (bank.name || '').toLowerCase();
+    if (name.includes('hard') || name.includes('advanced')) return 'Hard';
+    if (name.includes('easy') || name.includes('beginner')) return 'Easy';
+    return 'Medium';
+  };
+
   const generateRecommendedQuizzes = (banks) => {
     const validBanks = banks.filter(bank => bank.name).slice(0, 3);
     const recommendations = validBanks.map(bank => ({
@@ -295,76 +106,162 @@ const PracticeHome = () => {
     setRecommendedQuizzes(recommendations);
   };
 
-  const determineDifficulty = (bank) => {
-    const name = (bank.name || '').toLowerCase();
-    if (name.includes('hard') || name.includes('advanced')) return 'Hard';
-    if (name.includes('easy') || name.includes('beginner')) return 'Easy';
-    return 'Medium';
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await api.get('/api/exams/question-banks/', {
+        params: {
+          exam_category: examType
+        }
+      });
+
+      const banks = response.data.results || response.data;
+
+      if (banks.length > 0) {
+        const subjectMap = new Map();
+
+        banks.forEach(bank => {
+          const name = bank.subject_name || bank.subject;
+          if (!name) return;
+
+          if (!subjectMap.has(name)) {
+            subjectMap.set(name, {
+              name: name,
+              bank_id: bank.id,
+              subject_id: bank.subject,
+              question_count: bank.question_count || 0,
+              is_subscribed: bank.is_subscribed || false,
+              free_trial_remaining: bank.free_trial_remaining !== undefined ? bank.free_trial_remaining : 5,
+              description: bank.description || ''
+            });
+          } else {
+            subjectMap.get(name).question_count += bank.question_count || 0;
+          }
+        });
+
+        const subjectsList = Array.from(subjectMap.values());
+        setSubjects(subjectsList);
+
+        await fetchPerformanceData(subjectsList);
+        generateRecommendedQuizzes(banks);
+      } else {
+        setSubjects([]);
+        setError('No subjects found. Please add question banks in the admin panel.');
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Error in fetchData:', err);
+      setError('Failed to load subjects. Please try again.');
+      setLoading(false);
+    }
   };
+
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      await fetchCSRFToken();
+
+      const response = await api.get('/api/exams/auth/status/');
+
+      if (response.data.is_authenticated) {
+        setIsAuthenticated(true);
+        return true;
+      } else {
+        setIsAuthenticated(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      setIsAuthenticated(false);
+      return false;
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
+  // ============================================================
+  // EFFECTS
+  // ============================================================
+  useEffect(() => {
+    const initCSRF = async () => {
+      try {
+        await fetchCSRFToken();
+      } catch (error) {
+        console.warn('CSRF initialization failed:', error);
+      }
+    };
+    initCSRF();
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const authenticated = await checkAuthStatus();
+
+      if (!authenticated) {
+        sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+        navigate('/login');
+        return;
+      }
+
+      if (examType) {
+        await fetchData();
+      }
+      if (isTrial && subjectName) {
+        await fetchTrialStatus();
+      }
+    };
+
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examType, subjectName, isTrial, checkAuthStatus, navigate]);
 
   const handleStartPractice = async (subject) => {
     if (creatingSession) return;
-    
-    console.log('Starting practice for subject:', subject.name, 'bank_id:', subject.bank_id, 'subject_id:', subject.subject_id);
-    
+
     if (!isAuthenticated) {
-      console.log('Not authenticated, redirecting to login...');
       sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
       navigate('/login');
       return;
     }
-    
+
     try {
       setCreatingSession(true);
-      
+
       const csrfToken = await fetchCSRFToken();
       if (csrfToken) {
         api.defaults.headers.common['X-CSRFToken'] = csrfToken;
       }
-      
-      console.log('Creating session with data:', {
-        question_bank: subject.bank_id,
-        session_type: 'PRACTICE',
-        show_explanation_on_wrong: true,
-        allow_review: true
-      });
-      
+
       const response = await api.post('/api/exams/sessions/', {
         question_bank: subject.bank_id,
         session_type: 'PRACTICE',
         show_explanation_on_wrong: true,
         allow_review: true
       });
-      
-      console.log('Session created successfully:', response.data);
-      
+
       const params = new URLSearchParams();
       if (isTrial) params.append('trial', 'true');
       params.append('bank_id', subject.bank_id);
       params.append('subject', encodeURIComponent(subject.name));
-      
-      // ============================================================
-      // ADDED: Include subject_id and exam_category for study notes & past questions tabs
-      // ============================================================
       if (subject.subject_id) {
         params.append('subject_id', subject.subject_id);
       }
       if (examType) {
         params.append('exam_category', examType);
       }
-      // ============================================================
-      
+
       navigate(`/practice/session/${response.data.id}?${params.toString()}`);
     } catch (err) {
       console.error('Error starting practice:', err);
-      
+
       if (err.response?.status === 401 || err.response?.status === 403) {
-        console.log('Authentication failed - redirecting to login');
         alert('Your session has expired. Please login again.');
         sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
         navigate('/login');
       } else if (err.response?.status === 402) {
-        console.log('Payment required');
         navigate('/payment-plans');
       } else {
         const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to start practice session';
@@ -377,18 +274,18 @@ const PracticeHome = () => {
 
   const handleStartRecommended = async (quiz) => {
     if (creatingSession) return;
-    
+
     try {
       setCreatingSession(true);
       await fetchCSRFToken();
-      
+
       const response = await api.post('/api/exams/sessions/', {
         question_bank: quiz.bank_id,
         session_type: 'PRACTICE',
         show_explanation_on_wrong: true,
         allow_review: true
       });
-      
+
       const params = new URLSearchParams();
       params.append('bank_id', quiz.bank_id);
       params.append('subject', quiz.subject);
@@ -411,10 +308,10 @@ const PracticeHome = () => {
   };
 
   const getExamTitle = () => {
-    const titles = { 
-      'jssce': 'JSSCE', 
-      'waec': 'WAEC/NECO', 
-      'jamb': 'UTME/JAMB', 
+    const titles = {
+      'jssce': 'JSSCE',
+      'waec': 'WAEC/NECO',
+      'jamb': 'UTME/JAMB',
       'post-utme': 'Post-UTME',
       'aptitude': 'Aptitude Tests',
       'promotion': 'Promotion Exams',
@@ -471,13 +368,12 @@ const PracticeHome = () => {
     }
   };
 
-  // ===== FIX: Full-height loading state =====
   if (loading || !authChecked) {
     return (
-      <div style={{ 
-        minHeight: '80vh', 
-        display: 'flex', 
-        alignItems: 'center', 
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
         justifyContent: 'center',
         width: '100%'
       }}>
@@ -594,7 +490,7 @@ const PracticeHome = () => {
           }
         }
       `}</style>
-      
+
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, color: '#1a1a1a' }}>
           {getExamTitle()} Subjects
@@ -603,14 +499,14 @@ const PracticeHome = () => {
           Select a subject to start practicing. Track your progress and improve your skills.
         </p>
       </div>
-      
+
       {isTrial && (
         <div className="trial-banner">
           <div style={{ fontSize: '2rem' }}>🎁</div>
           <div style={{ flex: 1 }}>
             <h5 style={{ color: '#92400e', marginBottom: '0.25rem' }}>Free Trial Mode</h5>
             <p style={{ color: '#78350f', margin: 0 }}>
-              {trialInfo 
+              {trialInfo
                 ? `You have ${trialInfo.remaining} of ${trialInfo.total_free || 5} free questions remaining`
                 : 'Try 5 free questions per subject!'
               }
@@ -634,20 +530,20 @@ const PracticeHome = () => {
           </button>
         </div>
       )}
-      
+
       {error && (
         <div className="alert alert-warning" style={{ borderRadius: '12px' }}>
           <i className="fas fa-exclamation-triangle me-2"></i>
           {error}
         </div>
       )}
-      
+
       <div style={{ marginBottom: '3rem' }}>
         <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ color: '#3b82f6' }}>📚</span>
           Subjects
         </h3>
-        
+
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
@@ -659,7 +555,7 @@ const PracticeHome = () => {
             const attempted = progress?.total_questions_attempted || 0;
             const total = subject.question_count;
             const color = getSubjectColor(subject.name);
-            
+
             return (
               <div
                 key={index}
@@ -679,7 +575,7 @@ const PracticeHome = () => {
                     🔒 Upgrade
                   </div>
                 )}
-                
+
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
                   <div
                     className="subject-icon"
@@ -696,7 +592,7 @@ const PracticeHome = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div style={{ marginTop: '0.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <span style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: 500 }}>Progress</span>
@@ -719,14 +615,14 @@ const PracticeHome = () => {
           })}
         </div>
       </div>
-      
+
       {recommendedQuizzes.length > 0 && (
         <div style={{ marginTop: '3rem' }}>
           <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ color: '#f59e0b' }}>⭐</span>
             Recommended Quizzes
           </h3>
-          
+
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
