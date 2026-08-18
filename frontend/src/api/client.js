@@ -14,7 +14,7 @@ import axios from 'axios';
 // our own backend.
 
 const api = axios.create({
-  baseURL: '',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -40,7 +40,7 @@ const fetchCSRFToken = async () => {
     if (response.data.csrfToken) {
       return response.data.csrfToken;
     }
-  } catch (error) {
+  } catch {
     // fall through to cookie check below
   }
   return getCSRFTokenFromCookie();
