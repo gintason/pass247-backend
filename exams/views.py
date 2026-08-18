@@ -1689,4 +1689,4 @@ def check_access_api(request):
             'requires_payment': True,
             'upgrade_url': '/api/payments/initialize/'
         }
-    })
+    });

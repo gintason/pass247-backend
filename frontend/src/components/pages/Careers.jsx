@@ -1,3 +1,4 @@
+import api from '../../api/client';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -26,7 +27,7 @@ const Careers = () => {
   const fetchUserProgress = async () => {
     if (!user) return;
     try {
-      const response = await axios.get('/api/auth/stats/', { withCredentials: true });
+      const response = await api.get('/api/auth/stats/', { withCredentials: true });
       if (response.data) {}
     } catch (error) {
       console.error('Error fetching progress:', error);

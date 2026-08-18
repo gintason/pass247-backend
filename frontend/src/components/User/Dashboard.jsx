@@ -1,3 +1,4 @@
+import api from '../../api/client';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
@@ -47,7 +48,7 @@ const Dashboard = () => {
       // endpoint returned 402 to non-premium users. A single unavailable
       // panel should degrade to zeroes, not blank the page.
       try {
-        const statsResponse = await axios.get('/api/exams/stats/');
+        const statsResponse = await api.get('/api/exams/stats/');
         if (statsResponse.data) {
           setStats({
             totalSessions: statsResponse.data.stats?.totalSessions || 0,
@@ -68,7 +69,7 @@ const Dashboard = () => {
       
       // Fetch recent sessions - UPDATED URL
       try {
-        const sessionsResponse = await axios.get('/api/exams/sessions/');
+        const sessionsResponse = await api.get('/api/exams/sessions/');
         const sessions = sessionsResponse.data.results || sessionsResponse.data || [];
         // Sort by most recent and take last 5
         const sorted = sessions
@@ -83,7 +84,7 @@ const Dashboard = () => {
       
       // Fetch performance data - UPDATED URL
       try {
-        const perfResponse = await axios.get('/api/exams/performance/');
+        const perfResponse = await api.get('/api/exams/performance/');
         setPerformance(perfResponse.data.results || perfResponse.data || []);
       } catch (err) {
         console.log('Performance not available:', err.message);
@@ -100,7 +101,7 @@ const Dashboard = () => {
       // app uses. Calling it directly removes a guaranteed failed request on
       // every dashboard load.
       try {
-        const trialResponse = await axios.get('/api/exams/trial/status/');
+        const trialResponse = await api.get('/api/exams/trial/status/');
         setTrials(trialResponse.data.trials || trialResponse.data || []);
       } catch (err) {
         console.log('Trial status not available:', err.message);

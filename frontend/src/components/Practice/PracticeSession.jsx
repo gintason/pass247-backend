@@ -1,3 +1,4 @@
+import api from '../../api/client';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';

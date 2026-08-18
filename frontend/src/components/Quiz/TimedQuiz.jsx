@@ -1,3 +1,4 @@
+import api from '../../api/client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
@@ -15,7 +16,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
-  }
+ }
 });
 
 // Function to get CSRF token from cookie

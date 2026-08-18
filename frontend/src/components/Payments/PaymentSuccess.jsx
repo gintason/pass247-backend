@@ -1,3 +1,4 @@
+import api from '../../api/client';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import axios from 'axios';
@@ -41,7 +42,7 @@ const PaymentSuccess = () => {
     }
 
     try {
-      const response = await axios.get('/api/payments/verify/', {
+      const response = await api.get('/api/payments/verify/', {
         params: { reference },
         withCredentials: true
       });
