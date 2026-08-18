@@ -11,10 +11,10 @@ import 'bootstrap-icons/font/bootstrap-icons.css';
 //   3. base    — reset + typography (must beat Bootstrap's heading sizes)
 //   4. theme   — overrides Bootstrap's own --bs-* variables app-wide
 //   5. page    — page-scoped styles
-import './styles/tokens.css';
+import './Styles/tokens.css';
 import './index.css';
-import './styles/theme.css';
-import './styles/auth.css';
+import './Styles/theme.css';
+import './Styles/auth.css';
 import './Styles/Home.css';
 
 // Layout Components
