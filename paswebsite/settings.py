@@ -20,14 +20,14 @@ environ.Env.read_env(BASE_DIR / ".env")
 pymysql.install_as_MySQLdb()
 
 # -------------------------------------------------
-# Basic Project Settings
+# Basic Project Settings 
 # -------------------------------------------------
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DEBUG")
 
 # Hosts are environment-driven so a deploy does not require a code change.
 # Getting this wrong returns HTTP 400 for EVERY request, with a message that
-# does not obviously point at ALLOWED_HOSTS.
+# does not obviously point at ALLOWED_HOSTS. 
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
     default=["pass247.net", "www.pass247.net", "localhost", "127.0.0.1"],
@@ -470,6 +470,8 @@ else:
     # Remove this line if you terminate TLS directly in front of gunicorn
     # without a proxy setting this header.
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'None'
 
 # -------------------------------------------------
 # Django Debug Toolbar (optional - for development)
