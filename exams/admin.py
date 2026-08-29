@@ -165,6 +165,12 @@ class QuestionAdmin(admin.ModelAdmin):
             'fields': ('question_image', 'question_audio'),
             'classes': ('collapse',),
         }),
+        ('Diagram & Passage (optional)', {
+            'fields': ('diagram_url', 'essay_paragraph'),
+            'classes': ('collapse',),
+            'description': 'Image URL/path for diagram questions, and a '
+                           'comprehension passage / essay body for passage-based questions.',
+        }),
         ('Metadata', {
             'fields': ('is_published', 'times_used', 'created_by'),
             'classes': ('collapse',),
@@ -217,17 +223,20 @@ class QuestionAdmin(admin.ModelAdmin):
         if request.method == 'POST' and request.FILES.get('excel_file'):
             excel_file = request.FILES['excel_file']
             
-            if not excel_file.name.endswith(('.xlsx', '.xls')):
-                messages.error(request, '❌ Please upload an Excel file (.xlsx or .xls)')
+            if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.csv')):
+                messages.error(request, '❌ Please upload an Excel (.xlsx/.xls) or CSV (.csv) file')
                 return redirect('admin:exams_question_changelist')
             
             if excel_file.size > 10 * 1024 * 1024:
                 messages.error(request, '❌ File too large. Maximum size is 10MB')
                 return redirect('admin:exams_question_changelist')
             
+            # Preserve the original extension so the parser can pick the right
+            # reader (CSV vs Excel).
+            suffix = '.csv' if excel_file.name.lower().endswith('.csv') else '.xlsx'
             tmp_file_path = None
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                     for chunk in excel_file.chunks():
                         tmp_file.write(chunk)
                     tmp_file_path = tmp_file.name
@@ -289,13 +298,14 @@ class QuestionAdmin(admin.ModelAdmin):
                         'difficulty', 'marks', 'option_a', 'option_b', 'option_c',
                         'option_d', 'option_e', 'correct_answer', 'model_answer',
                         'marking_guide', 'explanation', 'reference', 'exam_year',
-                        'time_limit_seconds'
+                        'time_limit_seconds', 'diagram_url', 'essay_paragraph'
                     ],
                     'Required': [
                         'YES', 'YES', 'YES', 'YES', 'YES', 'No',
                         'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
                         'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
-                        'For THEORY', 'For THEORY', 'No', 'No', 'No', 'No'
+                        'For THEORY', 'For THEORY', 'No', 'No', 'No', 'No',
+                        'No', 'No'
                     ],
                     'Description': [
                         'The actual question text',
@@ -315,7 +325,11 @@ class QuestionAdmin(admin.ModelAdmin):
                         'Explanation for answer',
                         'Reference source',
                         'Exam year (e.g., 2023)',
-                        'Time limit in seconds'
+                        'Time limit in seconds',
+                        'Optional: image URL or file path for a diagram/figure '
+                        '(also accepted as column "diagram")',
+                        'Optional: comprehension passage / essay body (also '
+                        'accepted as column "comprehension_text")'
                     ]
                 }
                 instructions_df = pd.DataFrame(instructions_data)

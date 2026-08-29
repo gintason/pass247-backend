@@ -386,10 +386,33 @@ LOGOUT_REDIRECT_URL = "/"
 # -------------------------------------------------
 # Paystack Configuration
 # -------------------------------------------------
-PAYSTACK_LIVE_SECRET_KEY = env("PAYSTACK_LIVE_SECRET_KEY")
-PAYSTACK_LIVE_PUBLIC_KEY = env("PAYSTACK_LIVE_PUBLIC_KEY")
-PAYSTACK_INITIALIZE_PAYMENT_URL = env("PAYSTACK_INITIALIZE_PAYMENT_URL")
-PAYSTACK_VERIFY_URL = env("PAYSTACK_VERIFY_URL")
+# All Paystack credentials are read from the environment (.env locally,
+# platform env vars in production) — NEVER hard-code keys here.
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ TO PLUG IN A NEW PAYSTACK ACCOUNT (when O.A.M / client provides keys):   │
+# │   1. Log in to https://dashboard.paystack.com                            │
+# │   2. Settings ▸ API Keys & Webhooks ▸ copy the LIVE Secret & Public keys │
+# │   3. Set these in the deployment environment (or .env):                  │
+# │        PAYSTACK_LIVE_SECRET_KEY = sk_live_YOUR_SECRET_HERE        │
+# │        PAYSTACK_LIVE_PUBLIC_KEY = pk_live_YOUR_PUBLIC_HERE        │
+# │   4. On the same page, set the webhook URL to:                           │
+# │        https://<your-domain>/api/payments/webhook/                       │
+# │   5. Redeploy / restart — no code change is required.                    │
+# │                                                                          │
+# │   The two *_URL values below are Paystack's standard, stable endpoints   │
+# │   and rarely change; they default correctly if left unset.               │
+# └─────────────────────────────────────────────────────────────────────────┘
+PAYSTACK_LIVE_SECRET_KEY = env("PAYSTACK_LIVE_SECRET_KEY", default="")
+PAYSTACK_LIVE_PUBLIC_KEY = env("PAYSTACK_LIVE_PUBLIC_KEY", default="")
+PAYSTACK_INITIALIZE_PAYMENT_URL = env(
+    "PAYSTACK_INITIALIZE_PAYMENT_URL",
+    default="https://api.paystack.co/transaction/initialize",
+)
+PAYSTACK_VERIFY_URL = env(
+    "PAYSTACK_VERIFY_URL",
+    default="https://api.paystack.co/transaction/verify/",
+)
 
 # -------------------------------------------------
 # Email Configuration - environment driven

@@ -105,7 +105,8 @@ class TrialQuestionSerializer(serializers.ModelSerializer):
     """Serializer for free trial questions (without answers)"""
     class Meta:
         model = Question
-        fields = ['id', 'question_text', 'option_a', 'option_b', 'option_c', 
+        fields = ['id', 'question_text', 'diagram_url', 'essay_paragraph',
+                  'option_a', 'option_b', 'option_c', 
                   'option_d', 'option_e', 'question_type', 'difficulty', 
                   'subject', 'explanation', 'question_image']
         read_only_fields = fields

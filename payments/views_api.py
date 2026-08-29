@@ -6,6 +6,7 @@ from django.http import JsonResponse
 import json
 from datetime import datetime, timedelta
 from .models import Payment, SubscriptionPlan, UserPlanSubscription
+from .pricing import validate_plan_price
 import requests 
 import random
 import string
@@ -131,6 +132,16 @@ def api_initialize_payment(request):
         # Initialize payment
         reference = generate_reference()
         expiry_date = timezone.now() + timedelta(days=plan.duration_days)
+
+        # Defensive price validation before charging (guards against
+        # zero/negative/garbage amounts reaching Paystack).
+        try:
+            validated_price = validate_plan_price(plan.price)
+        except ValueError as price_error:
+            return JsonResponse({
+                'success': False,
+                'error': str(price_error)
+            }, status=400)
         
         payment = Payment.objects.create(
             user=request.user,
@@ -143,7 +154,7 @@ def api_initialize_payment(request):
         )
         
         # Prepare Paystack request
-        amount_in_kobo = plan.price * 100
+        amount_in_kobo = validated_price * 100
         headers = {
             "Authorization": f"Bearer {settings.PAYSTACK_LIVE_SECRET_KEY}",
             "Content-Type": "application/json",

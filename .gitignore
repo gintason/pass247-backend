@@ -72,3 +72,7 @@ smtp_test.py
 .idea/
 *.swp
 *~
+
+.env
+.env.backup
+*.env

@@ -42,13 +42,15 @@ class BulkUploadAdmin(admin.ModelAdmin):
         if request.method == 'POST' and request.FILES.get('excel_file'):
             excel_file = request.FILES['excel_file']
             
-            # Validate file type
-            if not excel_file.name.endswith(('.xlsx', '.xls')):
-                messages.error(request, 'Please upload an Excel file (.xlsx or .xls)')
+            # Validate file type (Excel or CSV)
+            if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.csv')):
+                messages.error(request, 'Please upload an Excel (.xlsx/.xls) or CSV (.csv) file')
                 return render(request, "admin/bulk_upload_form.html", context)
             
-            # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            # Save uploaded file temporarily, preserving its extension so the
+            # parser can select the correct reader (CSV vs Excel).
+            suffix = '.csv' if excel_file.name.lower().endswith('.csv') else '.xlsx'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                 for chunk in excel_file.chunks():
                     tmp_file.write(chunk)
                 tmp_file_path = tmp_file.name
@@ -108,13 +110,14 @@ class BulkUploadAdmin(admin.ModelAdmin):
                     'difficulty', 'marks', 'option_a', 'option_b', 'option_c',
                     'option_d', 'option_e', 'correct_answer', 'model_answer',
                     'marking_guide', 'explanation', 'reference', 'exam_year',
-                    'time_limit_seconds'
+                    'time_limit_seconds', 'diagram_url', 'essay_paragraph'
                 ],
                 'Required': [
                     'YES', 'YES', 'YES', 'YES', 'YES', 'No (default: 1)',
                     'Only for OBJECTIVE', 'Only for OBJECTIVE', 'Only for OBJECTIVE',
                     'Only for OBJECTIVE', 'Only for OBJECTIVE', 'Only for OBJECTIVE',
-                    'Only for THEORY', 'Only for THEORY', 'No', 'No', 'No', 'No'
+                    'Only for THEORY', 'Only for THEORY', 'No', 'No', 'No', 'No',
+                    'No', 'No'
                 ],
                 'Description': [
                     'The actual question text',
@@ -134,7 +137,9 @@ class BulkUploadAdmin(admin.ModelAdmin):
                     'Explanation for the answer',
                     'Reference source',
                     'Exam year (e.g., 2023)',
-                    'Time limit in seconds'
+                    'Time limit in seconds',
+                    'Optional: image URL or file path for a diagram/figure (alias: "diagram")',
+                    'Optional: comprehension passage / essay body (alias: "comprehension_text")'
                 ]
             })
             instructions.to_excel(writer, sheet_name='Instructions', index=False)

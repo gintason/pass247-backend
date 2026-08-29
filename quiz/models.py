@@ -28,6 +28,9 @@ class Question(models.Model):
     category = models.ForeignKey(Category, related_name='questions', on_delete=models.CASCADE)
     question = models.TextField()
     correct_answers = models.TextField()  # Comma-separated essay answers or variations
+    # Optional supplementary content (populated via bulk upload / admin).
+    options = models.TextField(blank=True, default='', help_text="Optional choices/options, e.g. pipe- or comma-separated.")
+    explanation = models.TextField(blank=True, default='', help_text="Optional explanation / answer details shown after submission.")
 
     def clean_text(self, text):
         text = text.lower().strip()

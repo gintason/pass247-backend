@@ -16,6 +16,9 @@ class UntimedQuestion(models.Model):
     text = models.TextField()  # The question text
     hint = models.TextField(blank=True, null=True)  # A hint for the question
     correct_answer = models.TextField()  # The correct answer
+    # Optional supplementary content (populated via bulk upload / admin).
+    options = models.TextField(blank=True, default='', help_text="Optional choices/options, e.g. pipe- or comma-separated.")
+    explanation = models.TextField(blank=True, default='', help_text="Optional explanation / answer details.")
 
     def __str__(self):
         return f"{self.category.name} - {self.text[:50]}"  # Show category & preview of the question

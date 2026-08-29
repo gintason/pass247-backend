@@ -120,6 +120,21 @@ class Question(models.Model):
     # Media attachments
     question_image = models.ImageField(upload_to='questions/images/', blank=True, null=True)
     question_audio = models.FileField(upload_to='questions/audio/', blank=True, null=True)
+
+    # Diagram / passage support (used by the bulk-upload template).
+    # diagram_url is a plain CharField (not URLField) so it accepts BOTH a
+    # remote image URL (https://...) and a relative file/media path.
+    diagram_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional image URL or file path for questions that include a diagram/figure."
+    )
+    # Long-form body for comprehension passages, data-response extracts, or
+    # essay prompts that several questions may refer to.
+    essay_paragraph = models.TextField(
+        blank=True,
+        help_text="Optional comprehension passage / essay paragraph body for passage-based questions."
+    )
     
     # Metadata
     is_published = models.BooleanField(default=True)

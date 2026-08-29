@@ -7,23 +7,22 @@ class PaymentsConfig(AppConfig):
     name = "payments"
 
     def ready(self):
-        from .models import SubscriptionPlan  # ✅ Correct model name
-
-        plans = [
-            {"name": "One Month", "duration_days": 30, "price": 10000},
-            {"name": "Three Months", "duration_days": 90, "price": 20000},
-            {"name": "Yearly", "duration_days": 365, "price": 25000},
-        ]
+        # Seed the canonical plans on a fresh database. Prices come from the
+        # single source of truth in payments/pricing.py. Existing rows are
+        # corrected by migration 0006_update_plan_pricing; get_or_create here
+        # only creates missing plans and never clobbers admin-edited prices.
+        from .models import SubscriptionPlan
+        from .pricing import get_expected_pricing
 
         try:
-            for plan in plans:
+            for tier in get_expected_pricing():
                 SubscriptionPlan.objects.get_or_create(
-                    name=plan["name"],
+                    name=tier["canonical_name"],
                     defaults={
-                        "duration_days": plan["duration_days"],
-                        "price": plan["price"],
+                        "duration_days": tier["duration_days"],
+                        "price": tier["price"],
                     },
                 )
         except (OperationalError, ProgrammingError):
-            # This prevents errors during `migrate` when the table doesn’t exist yet
+            # Table may not exist yet during the initial `migrate`.
             pass

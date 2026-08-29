@@ -1,9 +1,48 @@
+import os
 import pandas as pd
 from django.db import transaction
 from django.db.models import Q
 from .models import (
     ExamCategory, Subject, ExamYear, Question, QuestionBank
 )
+
+
+def read_tabular(file_path):
+    """
+    Read a bulk-upload file into a DataFrame, accepting BOTH Excel and CSV.
+
+    The file type is chosen by extension so the same parser powers the
+    ``.xlsx`` / ``.xls`` and ``.csv`` templates. Column names are normalised
+    to lower-case + stripped so header casing/whitespace never breaks a match.
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == '.csv':
+        # keep_default_na=True so blank cells arrive as NaN (handled by cell()).
+        df = pd.read_csv(file_path, dtype=str)
+    else:
+        df = pd.read_excel(file_path)
+
+    df.columns = df.columns.str.lower().str.strip()
+    return df
+
+
+def cell(row, df, *names):
+    """
+    Return the first non-empty value found among ``names`` (column aliases),
+    or ``None`` if none of the columns exist or all are blank.
+
+    This lets a column be referenced by several accepted header spellings
+    (e.g. ``diagram_url`` or ``diagram``) and treats empty/NaN cells as
+    "not provided" so optional columns never break an import.
+    """
+    for name in names:
+        if name in df.columns:
+            value = row.get(name)
+            if not pd.isna(value):
+                text = str(value).strip()
+                if text:
+                    return text
+    return None
 
 
 def process_excel_upload(file_path, user, options=None):
@@ -25,12 +64,15 @@ def process_excel_upload(file_path, user, options=None):
     - reference (optional)
     - exam_year (optional)
     - time_limit_seconds (optional)
+    - diagram_url / diagram (optional): image URL or file path for a figure
+    - essay_paragraph / comprehension_text (optional): passage/essay body
+
+    Accepts .xlsx, .xls and .csv. Optional/empty cells are handled gracefully
+    and never abort an otherwise-valid row.
     """
     
-    df = pd.read_excel(file_path)
-    
-    # Convert all column names to lowercase
-    df.columns = df.columns.str.lower().str.strip()
+    # Accepts .xlsx / .xls / .csv; column names already normalised.
+    df = read_tabular(file_path)
     
     results = {
         'total_rows': len(df),
@@ -103,6 +145,19 @@ def process_excel_upload(file_path, user, options=None):
             
             if 'time_limit_seconds' in df.columns and not pd.isna(row.get('time_limit_seconds')):
                 question_data['time_limit_seconds'] = int(row['time_limit_seconds'])
+
+            # --- New optional columns (safe to omit / leave blank) ---
+            # Diagram: accepted as `diagram_url` or `diagram`. Stores a remote
+            # image URL or a relative media/file path.
+            diagram = cell(row, df, 'diagram_url', 'diagram')
+            if diagram is not None:
+                question_data['diagram_url'] = diagram
+
+            # Passage / essay body: accepted as `essay_paragraph` or
+            # `comprehension_text`. Used for comprehension/passage/essay items.
+            essay = cell(row, df, 'essay_paragraph', 'comprehension_text')
+            if essay is not None:
+                question_data['essay_paragraph'] = essay
             
             # Add options for objective questions
             if question_type == 'OBJECTIVE':
@@ -388,7 +443,20 @@ def generate_bulk_upload_template():
                         'Subtract 5 from both sides: 2x = 10, then divide by 2: x = 5'],
         'reference': ['Nigerian Geography Textbook', 'Biology Textbook Ch.4', 'Mathematics Textbook Ch.2'],
         'exam_year': [2023, 2023, 2022],
-        'time_limit_seconds': [120, 300, 180]
+        'time_limit_seconds': [120, 300, 180],
+        # New OPTIONAL columns. Leave a cell blank when a question has no
+        # diagram or is not passage/essay based - blanks are ignored.
+        'diagram_url': [
+            'https://example.com/media/questions/nigeria-map.png',
+            '',
+            'questions/images/triangle.png'
+        ],
+        'essay_paragraph': [
+            '',
+            'Read the passage below and answer the question that follows. '
+            'Photosynthesis is the process by which green plants...',
+            ''
+        ],
     }
     
     df = pd.DataFrame(sample_data)

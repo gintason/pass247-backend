@@ -216,9 +216,9 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
                     'questions_attempted': trial.questions_answered,
                     'upgrade_url': "/api/payments/initialize/",
                     'available_plans': [
-                        {'name': 'Monthly', 'price': '₦2000', 'duration': '30 days'},
-                        {'name': 'Quarterly', 'price': '₦5000', 'duration': '90 days'},
-                        {'name': 'Yearly', 'price': '₦15000', 'duration': '365 days'}
+                        {'name': 'Monthly', 'price': '₦3,500', 'duration': '30 days'},
+                        {'name': 'Quarterly', 'price': '₦8,500', 'duration': '90 days'},
+                        {'name': 'Yearly', 'price': '₦40,000', 'duration': '365 days'}
                     ]
                 }
                 return Response(upgrade_data, status=status.HTTP_402_PAYMENT_REQUIRED)

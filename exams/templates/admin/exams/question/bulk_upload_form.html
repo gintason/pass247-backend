@@ -50,8 +50,10 @@
             <li>Fill in your questions following the format</li>
             <li>For OBJECTIVE questions, fill options A-E and correct answer</li>
             <li>For THEORY questions, fill model answer and marking guide</li>
+            <li><strong>Optional:</strong> add <code>diagram_url</code> (image URL / file path) for questions with a figure</li>
+            <li><strong>Optional:</strong> add <code>essay_paragraph</code> (or <code>comprehension_text</code>) for passage/essay questions</li>
             <li>Subject and Exam Category must already exist in the system</li>
-            <li>Upload the completed Excel file</li>
+            <li>Upload the completed Excel or CSV file (blank optional cells are ignored)</li>
         </ol>
         <a href="{% url 'admin:exams_question_download_template' %}" 
            class="button" style="background: #28a745; color: white;">
@@ -65,10 +67,10 @@
         
         <div style="margin-bottom: 20px;">
             <label for="excel_file" style="color: #1a1a1a;">
-                <strong>Select Excel File (.xlsx or .xls):</strong>
+                <strong>Select Excel or CSV File (.xlsx, .xls or .csv):</strong>
             </label>
             <input type="file" name="excel_file" id="excel_file" 
-                   accept=".xlsx,.xls" required 
+                   accept=".xlsx,.xls,.csv" required 
                    style="display: block; margin-top: 10px;">
         </div>
         

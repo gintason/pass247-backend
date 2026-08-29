@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta
 from django.contrib.auth.models import User
 from .models import Payment, SubscriptionPlan, UserSubscription, PaymentWebhookLog
+from .pricing import validate_plan_price
 import requests 
 import random
 from django.contrib import messages
@@ -81,7 +82,12 @@ def initialize_payment(request):
             return redirect("exams:dashboard")
 
         # ✅ No active subscription → proceed with Paystack init
-        amount = plan.price  # in Naira
+        # Defensive price validation before charging.
+        try:
+            amount = validate_plan_price(plan.price)  # in Naira
+        except ValueError as price_error:
+            messages.error(request, str(price_error))
+            return redirect("payments:payment_page")
         email = request.user.email
         amount_in_kobo = amount * 100
         reference = generate_reference()
