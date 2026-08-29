@@ -147,6 +147,11 @@ class QuestionAdmin(admin.ModelAdmin):
                 'time_limit_seconds'
             )
         }),
+        ('Diagram & Passage (optional)', {
+            'fields': ('diagram_url', 'essay_paragraph'),
+            'description': 'Image URL/path for diagram questions, and a '
+                           'comprehension passage / essay body for passage-based questions.',
+        }),
         ('Objective Question Options', {
             'fields': (
                 'option_a', 'option_b', 'option_c', 'option_d', 'option_e',
@@ -164,12 +169,6 @@ class QuestionAdmin(admin.ModelAdmin):
         ('Media Attachments', {
             'fields': ('question_image', 'question_audio'),
             'classes': ('collapse',),
-        }),
-        ('Diagram & Passage (optional)', {
-            'fields': ('diagram_url', 'essay_paragraph'),
-            'classes': ('collapse',),
-            'description': 'Image URL/path for diagram questions, and a '
-                           'comprehension passage / essay body for passage-based questions.',
         }),
         ('Metadata', {
             'fields': ('is_published', 'times_used', 'created_by'),
