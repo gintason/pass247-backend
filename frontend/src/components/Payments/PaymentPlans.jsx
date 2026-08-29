@@ -84,7 +84,7 @@ const PaymentPlans = () => {
     {
       id: 1,
       name: 'Basic Plan',
-      price: 5000,
+      price: 3500,
       plan_type: 'Monthly',
       is_popular: false,
       features: [
@@ -97,7 +97,7 @@ const PaymentPlans = () => {
     {
       id: 2,
       name: 'Premium Plan',
-      price: 15000,
+      price: 8500,
       plan_type: 'Quarterly',
       is_popular: true,
       features: [
@@ -112,12 +112,12 @@ const PaymentPlans = () => {
     {
       id: 3,
       name: 'Annual Plan',
-      price: 50000,
+      price: 40000,
       plan_type: 'Yearly',
       is_popular: false,
       features: [
         'Everything in Premium',
-        'Save 40% vs monthly',
+        'Save vs monthly billing',
         '1-on-1 tutoring sessions',
         'Certificate of completion',
         'Lifetime access to materials',

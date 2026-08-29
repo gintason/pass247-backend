@@ -501,6 +501,9 @@ const PracticeSession = () => {
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [upgradeData, setUpgradeData] = useState(null);
   const [checking, setChecking] = useState(false);
+  // Tracks which question indices have been answered, to style the
+  // full-access question navigator (subscribed users only).
+  const [answeredIndices, setAnsweredIndices] = useState(() => new Set());
 
   // ============================================================
   // FUNCTIONS DECLARED BEFORE EFFECTS
@@ -518,6 +521,8 @@ const PracticeSession = () => {
 
       if (questionResponse.data.has_been_answered) {
         setSelectedAnswer(questionResponse.data.previous_answer || '');
+        const idx = questionResponse.data.question_index;
+        setAnsweredIndices(prev => new Set(prev).add(idx));
       }
 
       if (questionResponse.data.session) {
@@ -656,6 +661,7 @@ const PracticeSession = () => {
           correct_answers: response.data.is_correct ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
           wrong_answers: !response.data.is_correct ? (prev.wrong_answers || 0) + 1 : (prev.wrong_answers || 0),
         } : null);
+        setAnsweredIndices(prev => new Set(prev).add(questionIndex));
       }
 
       setChecking(false);
@@ -751,6 +757,42 @@ const PracticeSession = () => {
 
   const handleReviewWrongAnswers = () => {
     navigate(`/practice/${sessionId}/review`);
+  };
+
+  // Jump directly to any question number (full-access / subscribed users).
+  // Trial sessions stay sequential, so the navigator is not shown for them.
+  const handleGotoQuestion = async (targetIndex) => {
+    if (isTrial || targetIndex === questionIndex) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.post(
+        `/api/exams/sessions/${sessionId}/goto_question/`,
+        { question_index: targetIndex }
+      );
+
+      setCurrentQuestion(response.data.question);
+      setQuestionIndex(response.data.question_index);
+      setTotalQuestions(response.data.total_questions);
+      setSelectedAnswer(response.data.previous_answer || '');
+      setFeedback(null);
+      setShowFeedback(false);
+      if (response.data.has_been_answered) {
+        setAnsweredIndices(prev => new Set(prev).add(response.data.question_index));
+      }
+      setLoading(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error('Error jumping to question:', err.response || err);
+      if (err.response?.status === 402) {
+        // Trial user tried to jump — send them to upgrade.
+        setUpgradeData(err.response.data);
+        setShowUpgradePrompt(true);
+      } else {
+        setError(err.response?.data?.error || 'Could not open that question');
+      }
+      setLoading(false);
+    }
   };
 
   // ============================================================
@@ -886,6 +928,45 @@ const PracticeSession = () => {
 
           {activeTab === 'practice' && !sessionCompleted && (
             <ProgressBar current={questionIndex + 1} total={isTrial ? 5 : totalQuestions} />
+          )}
+
+          {activeTab === 'practice' && !sessionCompleted && !isTrial && totalQuestions > 1 && (
+            <div className="card shadow-sm border-0 mb-4">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <h6 className="fw-bold mb-0">
+                    <i className="fas fa-th me-2 text-primary"></i>
+                    All Questions
+                  </h6>
+                  <span className="text-muted small">
+                    Tap any number to jump — answered are green
+                  </span>
+                </div>
+                <div className="d-flex flex-wrap gap-2">
+                  {Array.from({ length: totalQuestions }, (_, i) => {
+                    const isCurrent = i === questionIndex;
+                    const isAnswered = answeredIndices.has(i);
+                    let cls = 'btn btn-sm ';
+                    if (isCurrent) cls += 'btn-primary';
+                    else if (isAnswered) cls += 'btn-success';
+                    else cls += 'btn-outline-secondary';
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={cls}
+                        style={{ minWidth: '42px' }}
+                        disabled={loading || checking}
+                        onClick={() => handleGotoQuestion(i)}
+                        title={`Question ${i + 1}${isAnswered ? ' (answered)' : ''}`}
+                      >
+                        {i + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="card shadow-sm border-0 mb-4">

@@ -711,6 +711,58 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         return Response(response_data)
     
     @action(detail=True, methods=['post'])
+    def goto_question(self, request, pk=None):
+        """
+        Jump directly to any question by its index in the session.
+
+        Random access is a full-access feature: subscribed users (and admins)
+        can open a bank and answer questions in any order. Trial users stay on
+        the sequential, capped flow, so this returns 402 for them.
+        """
+        session = self.get_object()
+
+        if session.status == 'COMPLETED':
+            return Response(
+                {'error': 'Session already completed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not _get_user_full_access(request.user):
+            return Response(
+                {'error': 'Upgrade to jump between questions.'},
+                status=status.HTTP_402_PAYMENT_REQUIRED
+            )
+
+        try:
+            index = int(request.data.get('question_index'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'question_index must be an integer'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        total = len(session.questions_order or [])
+        if index < 0 or index >= total:
+            return Response(
+                {'error': f'question_index out of range (0-{max(total - 1, 0)})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        session.current_question_index = index
+        session.save(update_fields=['current_question_index'])
+
+        question = session.get_next_question()
+        answer = UserAnswer.objects.filter(session=session, question=question).first()
+        return Response({
+            'question': QuestionWithExplanationSerializer(question, context={'request': request}).data,
+            'question_index': session.current_question_index,
+            'total_questions': total,
+            'has_been_answered': answer is not None,
+            'previous_answer': answer.selected_answer if answer else None,
+            'was_correct': answer.is_correct if answer else None,
+        })
+    
+    @action(detail=True, methods=['post'])
     def skip_question(self, request, pk=None):
         session = self.get_object()
         if session.status == 'COMPLETED':

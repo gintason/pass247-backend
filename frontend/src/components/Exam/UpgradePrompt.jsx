@@ -36,7 +36,7 @@ const UpgradePrompt = ({ data, onClose }) => {
                       <i className="fas fa-calendar-alt fa-3x"></i>
                     </div>
                     <h5 className="fw-bold">Monthly</h5>
-                    <h3 className="text-primary">₦2,000</h3>
+                    <h3 className="text-primary">₦3,500</h3>
                     <p className="text-muted small">per month</p>
                     <ul className="list-unstyled">
                       <li><i className="fas fa-check text-success me-2"></i>All subjects</li>
@@ -55,10 +55,10 @@ const UpgradePrompt = ({ data, onClose }) => {
                     </div>
                     <span className="badge bg-warning text-dark mb-2">Popular</span>
                     <h5 className="fw-bold">Quarterly</h5>
-                    <h3 className="text-warning">₦5,000</h3>
-                    <p className="text-muted small">₦1,667/month</p>
+                    <h3 className="text-warning">₦8,500</h3>
+                    <p className="text-muted small">₦2,833/month</p>
                     <ul className="list-unstyled">
-                      <li><i className="fas fa-check text-success me-2"></i>Save 17%</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Save 19%</li>
                       <li><i className="fas fa-check text-success me-2"></i>All features</li>
                       <li><i className="fas fa-check text-success me-2"></i>Priority support</li>
                     </ul>
@@ -73,10 +73,10 @@ const UpgradePrompt = ({ data, onClose }) => {
                       <i className="fas fa-calendar-alt fa-3x"></i>
                     </div>
                     <h5 className="fw-bold">Yearly</h5>
-                    <h3 className="text-success">₦15,000</h3>
-                    <p className="text-muted small">₦1,250/month</p>
+                    <h3 className="text-success">₦40,000</h3>
+                    <p className="text-muted small">₦3,333/month</p>
                     <ul className="list-unstyled">
-                      <li><i className="fas fa-check text-success me-2"></i>Save 38%</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Save 5%</li>
                       <li><i className="fas fa-check text-success me-2"></i>All features</li>
                       <li><i className="fas fa-check text-success me-2"></i>Certificate included</li>
                     </ul>

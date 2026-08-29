@@ -272,6 +272,18 @@ const Exams = () => {
               Select the examination you're preparing for and start practicing
               <span className="d-block mt-2 text-warning"><i className="fas fa-gift me-2"></i>Try 5 questions per subject for free!</span>
             </p>
+            <div className="text-center mt-3">
+              <button
+                className="btn btn-warning btn-lg fw-bold"
+                onClick={() => navigate('/payment-plans')}
+              >
+                <i className="fas fa-crown me-2"></i>
+                Upgrade / Subscribe to unlock all questions
+              </button>
+              <div className="small text-muted mt-2">
+                You can subscribe any time — you don't need to finish the free questions first.
+              </div>
+            </div>
           </motion.div>
 
           <div className="exams-grid">
