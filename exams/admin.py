@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse, path
@@ -8,6 +9,8 @@ from django.http import HttpResponse
 from io import BytesIO
 import tempfile
 import os
+
+from .study_notes_import import convert_uploaded_file, StudyNotesImportError
 
 # Try to import optional dependencies
 try:
@@ -507,8 +510,72 @@ class QuestionBankAdmin(admin.ModelAdmin):
 # ============================================================
 # STUDY NOTES ADMIN
 # ============================================================
+STUDY_NOTES_FORMAT_HELP = (
+    "Markdown with LaTeX ($...$). Colour-coded panels: start a quote with "
+    "<code>&gt; [!DEFINITION]</code>, <code>[!KEY FACT]</code>, <code>[!KEY RULE]</code>, "
+    "<code>[!FORMULA]</code>, <code>[!WORKED EXAMPLE]</code>, <code>[!EXAM TIP]</code>, "
+    "<code>[!PITFALL]</code> or <code>[!SUMMARY]</code> (emoji labels such as "
+    "<code>&gt; 💡 **KEY DEFINITION**</code> also work). Topic banners: "
+    "<code># 📘 TOPIC 1 | NUMBER &amp; NUMERATION</code>. "
+    "Easiest: upload a Word (.docx) or Markdown (.md) file below and this box is filled for you."
+)
+
+
+class StudyNotesAdminForm(forms.ModelForm):
+    """Adds a non-model upload field: .docx/.md/.txt -> styled Markdown."""
+    upload_file = forms.FileField(
+        required=False,
+        label='Upload notes file',
+        help_text=(
+            'Optional. Upload a Word document (.docx, e.g. the PASS 24/7 study '
+            'notes template), a Markdown (.md) or text (.txt) file. It is converted '
+            'into colour-coded notes and REPLACES the content above.'
+        ),
+        widget=forms.ClearableFileInput(attrs={'accept': '.docx,.md,.markdown,.txt'}),
+    )
+
+    class Meta:
+        model = StudyNotes
+        fields = '__all__'
+        widgets = {
+            'content': forms.Textarea(attrs={
+                'rows': 30, 'style': 'width: 95%; font-family: monospace;',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'content' in self.fields:
+            self.fields['content'].help_text = STUDY_NOTES_FORMAT_HELP
+        # created_by is filled in by StudyNotesAdmin.save_model when left empty
+        if 'created_by' in self.fields:
+            self.fields['created_by'].required = False
+
+    def clean_upload_file(self):
+        upload = self.cleaned_data.get('upload_file')
+        if not upload:
+            return upload
+        if upload.size > 10 * 1024 * 1024:
+            raise forms.ValidationError('File is too large (max 10 MB).')
+        try:
+            self.converted_content = convert_uploaded_file(upload)
+        except StudyNotesImportError as exc:
+            raise forms.ValidationError(str(exc))
+        if not self.converted_content.strip():
+            raise forms.ValidationError('No text could be found in this file.')
+        return upload
+
+    def clean(self):
+        cleaned = super().clean()
+        converted = getattr(self, 'converted_content', None)
+        if converted:
+            cleaned['content'] = converted
+        return cleaned
+
+
 @admin.register(StudyNotes)
 class StudyNotesAdmin(admin.ModelAdmin):
+    form = StudyNotesAdminForm
     list_display = ['title', 'subject', 'is_active', 'created_by', 'created_at', 'topics_count']
     list_filter = ['is_active', 'subject', 'created_at']
     search_fields = ['title', 'content', 'subject__name']
@@ -519,14 +586,22 @@ class StudyNotesAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('subject', 'title', 'content')
+            'fields': ('subject', 'title')
         }),
-        ('Topics & Formulas', {
+        ('Notes Content', {
+            'fields': ('upload_file', 'content'),
+            'description': 'Upload a .docx / .md / .txt file OR type/paste Markdown directly. '
+                           'Students see this rendered with coloured topic banners, '
+                           'definition, formula, worked-example and exam-tip panels.'
+        }),
+        ('Topics & Formulas (optional, structured)', {
             'fields': ('topics', 'formulas'),
+            'classes': ('collapse',),
             'description': 'Enter topics as JSON array with title, description, and key_points. Enter formulas as JSON array with formula, description, and application.'
         }),
         ('References', {
             'fields': ('references',),
+            'classes': ('collapse',),
             'description': 'Enter references as JSON array with title, author, and other relevant fields.'
         }),
         ('Settings', {
@@ -548,6 +623,12 @@ class StudyNotesAdmin(admin.ModelAdmin):
         if not obj.created_by:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        upload = form.cleaned_data.get('upload_file')
+        if upload:
+            messages.success(
+                request,
+                f'"{upload.name}" was converted into colour-coded study notes.'
+            )
 
 
 # ============================================================

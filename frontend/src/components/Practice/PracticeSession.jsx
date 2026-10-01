@@ -5,236 +5,44 @@ import AnswerFeedback from './AnswerFeedback';
 import ProgressBar from './ProgressBar';
 import SessionSummary from './SessionSummary';
 import api, { fetchCSRFToken } from '../../api/client';
-
-// ============================================================
-// STUDY NOTES COMPONENT
-// ============================================================
-const StudyNotes = ({ subjectName, subjectId }) => {
-  const [notes, setNotes] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (subjectId && subjectId !== 'null' && subjectId !== 'undefined') {
-      fetchStudyNotes();
-    } else {
-      setLoading(false);
-      setError('Subject ID not available');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectId]);
-
-  const fetchStudyNotes = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await api.get(`/api/exams/study-notes/${subjectId}/`);
-      setNotes(response.data);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching study notes:', err);
-      setError('Failed to load study notes');
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-success" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-        <p className="mt-2 text-muted">Loading study notes for {subjectName || 'this subject'}...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-5">
-        <i className="fas fa-book-open fa-3x text-muted mb-3"></i>
-        <h5>Study Notes Unavailable</h5>
-        <p className="text-muted">
-          {subjectId && subjectId !== 'null' && subjectId !== 'undefined'
-            ? `Study notes for ${subjectName || 'this subject'} are not yet available.`
-            : 'Please access this section from a valid subject page.'}
-        </p>
-        {subjectId && subjectId !== 'null' && subjectId !== 'undefined' && (
-          <button className="btn btn-outline-success btn-sm mt-2" onClick={fetchStudyNotes}>
-            <i className="fas fa-redo me-1"></i> Retry
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (!notes || (!notes.topics && !notes.content)) {
-    return (
-      <div className="text-center py-5">
-        <i className="fas fa-book-open fa-3x text-muted mb-3"></i>
-        <h5>No Study Notes Available</h5>
-        <p className="text-muted">Study notes for {subjectName || 'this subject'} are not yet available.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="study-notes-container">
-      <div className="d-flex align-items-center mb-4">
-        <div className="icon-circle bg-success-light me-3" style={{
-          width: '50px',
-          height: '50px',
-          borderRadius: '12px',
-          backgroundColor: 'rgba(5, 150, 105, 0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <i className="fas fa-book-open fa-lg text-success"></i>
-        </div>
-        <div>
-          <h4 className="mb-0 fw-bold">{subjectName || 'Subject'} - Study Notes</h4>
-          <p className="text-muted mb-0">Comprehensive study materials</p>
-        </div>
-      </div>
-
-      {notes.topics && notes.topics.length > 0 && (
-        <div className="mb-4">
-          <h5 className="mb-3 fw-bold">
-            <i className="fas fa-list-ul me-2 text-success"></i>
-            Topics Covered
-          </h5>
-          <div className="row">
-            {notes.topics.map((topic, index) => (
-              <div key={index} className="col-md-6 mb-3">
-                <div className="card border-0 shadow-sm h-100" style={{ borderLeft: '3px solid #059669' }}>
-                  <div className="card-body">
-                    <h6 className="card-title fw-bold">
-                      <i className="fas fa-check-circle text-success me-2"></i>
-                      {topic.title || topic.name}
-                    </h6>
-                    {topic.description && (
-                      <p className="card-text text-muted small">{topic.description}</p>
-                    )}
-                    {topic.key_points && topic.key_points.length > 0 && (
-                      <ul className="list-unstyled mb-0">
-                        {topic.key_points.map((point, idx) => (
-                          <li key={idx} className="small mb-1">
-                            <i className="fas fa-circle text-success me-1" style={{ fontSize: '6px' }}></i>
-                            {point}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {notes.formulas && notes.formulas.length > 0 && (
-        <div className="mb-4">
-          <h5 className="mb-3 fw-bold">
-            <i className="fas fa-superscript me-2 text-success"></i>
-            Important Formulas
-          </h5>
-          <div className="card border-0 shadow-sm">
-            <div className="card-body p-0">
-              <div className="table-responsive">
-                <table className="table table-hover mb-0">
-                  <thead className="bg-success text-white">
-                    <tr>
-                      <th className="py-3">Formula</th>
-                      <th className="py-3">Description</th>
-                      <th className="py-3">Application</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {notes.formulas.map((formula, index) => (
-                      <tr key={index}>
-                        <td><code className="bg-light p-1 rounded">{formula.formula || formula.name}</code></td>
-                        <td>{formula.description}</td>
-                        <td className="text-muted small">{formula.application || 'General use'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {notes.content && (
-        <div className="mb-4">
-          <h5 className="mb-3 fw-bold">
-            <i className="fas fa-file-alt me-2 text-success"></i>
-            Study Material
-          </h5>
-          <div className="card border-0 shadow-sm">
-            <div className="card-body">
-              <div className="study-content" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                {notes.content}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {notes.references && notes.references.length > 0 && (
-        <div className="mb-4">
-          <h5 className="mb-3 fw-bold">
-            <i className="fas fa-book me-2 text-success"></i>
-            Recommended References
-          </h5>
-          <div className="list-group">
-            {notes.references.map((ref, index) => (
-              <div key={index} className="list-group-item border-0 shadow-sm mb-2 rounded-3">
-                <i className="fas fa-external-link-alt me-2 text-muted"></i>
-                <strong>{ref.title || ref.name}</strong>
-                {ref.author && <span className="text-muted"> by {ref.author}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+import StudyNotesViewer from './StudyNotesViewer';
 
 // ============================================================
 // PAST QUESTIONS COMPONENT
 // ============================================================
 const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
+  // Derived at render time — avoids setState-in-effect for the "no id" case.
+  const invalidId =
+    !subjectId || subjectId === 'null' || subjectId === 'undefined';
+
   const [pastQuestions, setPastQuestions] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Initial state already reflects invalidId, so no effect-based setState needed.
+  const [loading, setLoading] = useState(!invalidId);
+  const [error, setError] = useState(
+    invalidId ? 'Subject ID not available' : null
+  );
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [feedbackByQuestion, setFeedbackByQuestion] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const questionsPerPage = 10;
 
-  useEffect(() => {
-    if (subjectId && subjectId !== 'null' && subjectId !== 'undefined') {
-      fetchPastQuestions();
-    } else {
-      setLoading(false);
-      setError('Subject ID not available');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectId]);
-
+  // Declared BEFORE the effect that references it (fixes TDZ error).
+  //
+  // The leading `await Promise.resolve()` guarantees an await has run on
+  // EVERY path from function entry before any setState becomes reachable.
+  // Without it, a synchronous throw from `api.get(...)` would reach the
+  // catch block before any await, and react-hooks/set-state-in-effect
+  // correctly flags those catch-block setState calls.
   const fetchPastQuestions = async () => {
+    await Promise.resolve();
     try {
-      setLoading(true);
-      setError(null);
-      const response = await api.get(`/api/exams/past-questions/${subjectId}/`, {
-        params: { exam_category: examCategory || '' }
-      });
+      const response = await api.get(
+        `/api/exams/past-questions/${subjectId}/`,
+        { params: { exam_category: examCategory || '' } }
+      );
       setPastQuestions(response.data);
+      setError(null);
       setLoading(false);
     } catch (err) {
       console.error('Error fetching past questions:', err);
@@ -242,6 +50,19 @@ const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
       setLoading(false);
     }
   };
+
+ useEffect(() => {
+    if (invalidId) return;   // initial state already reflects this
+    // react-hooks/set-state-in-effect false-positives on async loaders:
+    // the analyzer does not trace through the async-function boundary, so
+    // it does not see that `await Promise.resolve()` inside
+    // fetchPastQuestions makes every setState asynchronous. See
+    // https://github.com/facebook/react/issues/34905.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPastQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invalidId, subjectId, examCategory]);
+
 
   const handleSelectAnswer = (questionId, letter) => {
     setSelectedAnswers(prev => ({ ...prev, [questionId]: letter }));
@@ -509,6 +330,8 @@ const PracticeSession = () => {
   // FUNCTIONS DECLARED BEFORE EFFECTS
   // ============================================================
   const fetchSessionData = async () => {
+    // See fetchPastQuestions for why this leading await is required.
+    await Promise.resolve();
     try {
       setLoading(true);
       const questionResponse = await api.get(
@@ -543,6 +366,8 @@ const PracticeSession = () => {
   };
 
   const fetchSessionSummary = async () => {
+    // See fetchPastQuestions for why this leading await is required.
+    await Promise.resolve();
     try {
       setLoading(true);
       const response = await api.post(`/api/exams/sessions/${sessionId}/complete_session/`);
@@ -811,11 +636,13 @@ const PracticeSession = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'practice') {
-      fetchSessionData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, activeTab]);
+      if (activeTab === 'practice') {
+        // Same false positive as in PastQuestions above.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchSessionData();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, activeTab]);
 
   if (loading && !sessionCompleted && activeTab === 'practice') {
     return (
@@ -1132,7 +959,8 @@ const PracticeSession = () => {
 
                 {activeTab === 'notes' && (
                   <div className="tab-content">
-                    <StudyNotes
+                    <StudyNotesViewer
+                      key={subjectId}
                       subjectName={subjectName}
                       subjectId={subjectId}
                     />

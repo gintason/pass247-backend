@@ -4,6 +4,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
+import './Styles/study-notes.css';
 
 // Pass24/7 design system — cascade order is deliberate:
 //   1. vendor (bootstrap, above)
