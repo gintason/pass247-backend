@@ -17,6 +17,10 @@ export default defineConfig(({ mode }) => {
   const target = env.DJANGO_ORIGIN || 'http://localhost:8000'
 
   return {
+    // Absolute base: bundled assets are emitted as /assets/<name>-<hash>.ext,
+    // so they load from any route depth (/practice/jssce/...). A relative
+    // base ('./') would resolve them against the current URL and 404.
+    base: '/',
     plugins: [react()],
     server: {
       // Pinned rather than left to Vite's default. strictPort makes startup

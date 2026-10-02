@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  fetchPlans as fetchPlanList, startCheckout, describeCheckoutError, chargedPrice,
+} from '../../api/payments';
 
 const PaymentPlans = () => {
   const navigate = useNavigate();
@@ -10,36 +13,28 @@ const PaymentPlans = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [activeSubscription, setActiveSubscription] = useState(null);
-
-  useEffect(() => {
-    fetchPlans();
-    checkSubscription();
-  }, []);
+  const [plansError, setPlansError] = useState(null);
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState(null);
 
   const fetchPlans = async () => {
+    await Promise.resolve();
     try {
-      const response = await api.get('/api/payments/plans/');
-      // Handle different response formats
-      let plansData = [];
-      if (response.data.results && Array.isArray(response.data.results)) {
-        plansData = response.data.results;
-      } else if (Array.isArray(response.data)) {
-        plansData = response.data;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        plansData = response.data.data;
-      } else {
-        plansData = [];
-      }
-      setPlans(plansData);
+      // Real plans only: their ids are what /api/payments/initialize/ needs.
+      setPlans(await fetchPlanList());
+      setPlansError(null);
     } catch (error) {
       console.error('Error fetching plans:', error);
       setPlans([]);
+      setPlansError('Could not load plans. Please refresh the page.');
     } finally {
       setLoading(false);
     }
   };
 
   const checkSubscription = async () => {
+    await Promise.resolve();
+    if (!user) return; // status endpoint needs a login
     try {
       const response = await api.get('/api/payments/status/');
       if (response.data.has_active_subscription) {
@@ -50,24 +45,40 @@ const PaymentPlans = () => {
     }
   };
 
+  useEffect(() => {
+    // Async loaders: every setState inside them runs after an await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchPlans();
+    checkSubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const handleSelectPlan = (plan) => {
     setSelectedPlan(plan);
   };
 
   const handleSubscribe = async () => {
-    if (!selectedPlan) return;
-    
+    if (!selectedPlan || paying) return;
+    if (!user) {
+      sessionStorage.setItem('redirectAfterLogin', '/payment-plans');
+      navigate('/login');
+      return;
+    }
+    setPaying(true);
+    setPayError(null);
     try {
-      const formData = new FormData();
-      formData.append('plan_id', selectedPlan.id);
-      
-      const response = await api.post('/api/payments/initialize/', formData);
-      
-      if (response.data.authorization_url) {
-        window.location.href = response.data.authorization_url;
-      }
+      await startCheckout(selectedPlan.id); // redirects to Paystack
     } catch (error) {
       console.error('Error initializing payment:', error);
+      const { message, action } = describeCheckoutError(error);
+      if (action === 'login') {
+        sessionStorage.setItem('redirectAfterLogin', '/payment-plans');
+        navigate('/login');
+        return;
+      }
+      if (action === 'dashboard') checkSubscription();
+      setPayError(message);
+      setPaying(false);
     }
   };
 
@@ -79,54 +90,9 @@ const PaymentPlans = () => {
     }).format(price);
   };
 
-  // Default plans if API fails or returns empty
-  const defaultPlans = [
-    {
-      id: 1,
-      name: 'Basic Plan',
-      price: 3500,
-      plan_type: 'Monthly',
-      is_popular: false,
-      features: [
-        'Access to all subjects',
-        '5 questions per subject free daily',
-        'Basic explanations',
-        'Email support'
-      ]
-    },
-    {
-      id: 2,
-      name: 'Premium Plan',
-      price: 8500,
-      plan_type: 'Quarterly',
-      is_popular: true,
-      features: [
-        'Everything in Basic',
-        'Unlimited questions',
-        'Detailed video explanations',
-        'Priority support',
-        'Progress tracking',
-        'Mock exams included'
-      ]
-    },
-    {
-      id: 3,
-      name: 'Annual Plan',
-      price: 40000,
-      plan_type: 'Yearly',
-      is_popular: false,
-      features: [
-        'Everything in Premium',
-        'Save vs monthly billing',
-        '1-on-1 tutoring sessions',
-        'Certificate of completion',
-        'Lifetime access to materials',
-        'Early access to new features'
-      ]
-    }
-  ];
-
-  const displayPlans = plans.length > 0 ? plans : defaultPlans;
+  // Only real plans from the API are shown: made-up fallback plans had ids
+  // that did not exist, so paying for them always failed with HTTP 400.
+  const displayPlans = plans;
 
   if (loading) {
     return (
@@ -509,6 +475,12 @@ const PaymentPlans = () => {
             </p>
           </div>
 
+          {(plansError || (!loading && displayPlans.length === 0)) && (
+            <div className="alert alert-warning text-center">
+              {plansError || 'No plans are available right now. Please check back soon.'}
+            </div>
+          )}
+
           {/* Plans Grid */}
           <div className="plans-grid">
             {displayPlans.map(plan => (
@@ -523,7 +495,10 @@ const PaymentPlans = () => {
                 <div className="plan-header">
                   <h3 className="plan-name">{plan.name}</h3>
                   <div className="plan-price">
-                    {formatPrice(plan.price)}
+                    {formatPrice(chargedPrice(plan))}
+                    {plan.discount_percentage > 0 && (
+                      <s className="ms-2 fs-6 text-muted">{formatPrice(plan.price)}</s>
+                    )}
                     <small>/{plan.plan_type?.toLowerCase() || 'month'}</small>
                   </div>
                   <p className="plan-period">Billed {plan.plan_type?.toLowerCase() || 'monthly'}</p>
@@ -571,10 +546,20 @@ const PaymentPlans = () => {
                   <button 
                     className="summary-button"
                     onClick={handleSubscribe}
+                    disabled={paying}
                   >
-                    Proceed to Payment <i className="fas fa-arrow-right ms-2"></i>
+                    {paying ? (
+                      <><span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Opening Paystack…</>
+                    ) : (
+                      <>Pay {formatPrice(chargedPrice(selectedPlan))} with Paystack <i className="fas fa-arrow-right ms-2"></i></>
+                    )}
                   </button>
                 </div>
+                {payError && (
+                  <div className="alert alert-light text-danger mt-3 mb-0" role="alert">
+                    <i className="fas fa-exclamation-circle me-2"></i>{payError}
+                  </div>
+                )}
               </div>
             </div>
           )}

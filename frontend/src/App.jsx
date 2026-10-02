@@ -38,6 +38,7 @@ import Profile from './components/User/Profile';
 
 // Exam Components
 import Exams from './components/Exam/Exams';
+import PracticePortal from './components/Practice/PracticePortal';
 import PracticeHome from './components/Practice/PracticeHome';
 import PracticeSession from './components/Practice/PracticeSession';
 import SessionSummary from './components/Practice/SessionSummary';
@@ -110,6 +111,8 @@ function App() {
               <Route path="/exams" element={<Exams />} />
               
               {/* PracticeHome routes */}
+              <Route path="/practice-portal" element={<PracticePortal />} />
+              <Route path="/practice-portal/:examType" element={<PracticePortal />} />
               <Route path="/practice/:examType" element={<PracticeHome />} />
               <Route path="/practice/:examType/:subjectName" element={<PracticeHome />} />
               

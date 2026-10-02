@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
+from . import views, views_portal
 
 router = DefaultRouter()
 router.register(r'categories', views.ExamCategoryViewSet)
@@ -36,4 +36,15 @@ urlpatterns = [
     # Study Notes and Past Questions
     path('study-notes/<int:subject_id>/', views.get_study_notes, name='get-study-notes'),
     path('past-questions/<int:subject_id>/', views.get_past_questions, name='get-past-questions'),
+
+    # Practice Portal: pickers, free practice engine, paid main exam, syllabuses
+    path('portal/exam-bodies/', views_portal.portal_exam_bodies, name='portal-exam-bodies'),
+    path('portal/subjects/', views_portal.portal_subjects, name='portal-subjects'),
+    path('portal/access/', views_portal.portal_access, name='portal-access'),
+    path('exam-years/', views_portal.exam_years, name='exam-years'),
+    path('practice/categories/', views_portal.practice_categories, name='practice-categories'),
+    path('practice/start/', views_portal.start_practice, name='practice-start'),
+    path('main-exam/start/', views_portal.start_main_exam, name='main-exam-start'),
+    path('syllabuses/', views_portal.syllabus_list, name='syllabus-list'),
+    path('syllabuses/<int:pk>/', views_portal.syllabus_detail, name='syllabus-detail'),
 ]

@@ -22,6 +22,76 @@ from utils.admin_access import admin_or_premium_required
 logger = logging.getLogger(__name__)
 
 
+def api_login_required(view_func):
+    """
+    JSON 401 for anonymous API calls. Django's @login_required answers with a
+    302 to the login page, which axios follows and then reports as a confusing
+    HTML/404 response instead of "please log in".
+    """
+    from functools import wraps
+
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({
+                'success': False,
+                'code': 'login_required',
+                'error': 'Please log in to continue.',
+            }, status=401)
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+def _request_data(request):
+    """Accept both JSON bodies and form posts (the React page sent FormData)."""
+    content_type = (request.content_type or '').lower()
+    if 'application/json' in content_type:
+        try:
+            data = json.loads(request.body or b'{}')
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise ValueError('Request body is not valid JSON.')
+        if not isinstance(data, dict):
+            raise ValueError('Request body must be a JSON object.')
+        return data
+    return request.POST.dict()
+
+
+def _allowed_frontend_origins():
+    origins = {getattr(settings, 'FRONTEND_URL', '').rstrip('/')}
+    origins.update(o.rstrip('/') for o in getattr(settings, 'CORS_ALLOWED_ORIGINS', []) or [])
+    origins.update(o.rstrip('/') for o in getattr(settings, 'CSRF_TRUSTED_ORIGINS', []) or [])
+    return {o for o in origins if o}
+
+
+def _payment_callback_url(request, requested=None):
+    """
+    Where Paystack sends the student after paying: the React
+    /payment/success page, which verifies the reference via
+    /api/payments/verify/. A callback_url sent by the frontend is honoured
+    only when its origin is one of our own frontends (no open redirect).
+    """
+    from urllib.parse import urlparse
+
+    if requested:
+        parsed = urlparse(str(requested))
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if parsed.scheme in ('http', 'https') and origin in _allowed_frontend_origins():
+            return str(requested)
+        logger.warning("Ignoring callback_url with unexpected origin: %s", requested)
+
+    frontend = (getattr(settings, 'FRONTEND_URL', '') or '').rstrip('/')
+    if not frontend:
+        frontend = request.build_absolute_uri('/').rstrip('/')
+    return f"{frontend}/payment/success"
+
+
+def _plan_charge_naira(plan):
+    """Amount actually charged (discount applied), as whole Naira."""
+    from decimal import Decimal, ROUND_HALF_UP
+    amount = Decimal(str(plan.get_discounted_price())).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return validate_plan_price(int(amount))
+
+
 def generate_reference():
     """Generate a unique reference for the transaction"""
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -29,7 +99,7 @@ def generate_reference():
     return f"PAS-{timestamp}-{random_str}"
 
 
-@login_required
+@api_login_required
 @require_GET
 def api_subscription_status(request):
     """Check if user has an active plan subscription"""
@@ -65,10 +135,14 @@ def api_subscription_status(request):
         })
 
 
-@login_required
 @require_GET
 def api_get_plans(request):
-    """API endpoint to get subscription plans (for React)"""
+    """
+    Subscription plans (public - the pricing page is shown before login).
+    Previously behind @login_required, so logged-out visitors got a redirect
+    and the page fell back to hard-coded plans with made-up ids, which then
+    failed at /initialize/ with "Invalid subscription plan selected".
+    """
     plans = SubscriptionPlan.objects.all().order_by('price')
     
     data = []
@@ -92,129 +166,142 @@ def api_get_plans(request):
     })
 
 
-@login_required
+@api_login_required
 @require_POST
 def api_initialize_payment(request):
-    """API endpoint to initialize payment (for React)"""
-    # ============================================================
-    # ADMIN BYPASS - Admins don't need to pay
-    # ============================================================
-    if request.user.is_staff or request.user.is_superuser:
-        return JsonResponse({
-            'success': False,
-            'error': 'Administrators do not need to subscribe. You already have full access.'
-        }, status=400)
-    try:
-        data = json.loads(request.body)
-        plan_id = data.get('plan_id')
-        
-        if not plan_id:
-            return JsonResponse({
-                'success': False,
-                'error': 'Plan ID is required'
-            }, status=400)
-        
-        plan = SubscriptionPlan.objects.get(id=plan_id)
-        
-        # Check for active subscription
-        active_subscription = UserPlanSubscription.objects.filter(
-            user=request.user,
-            is_active=True,
-            end_date__gte=timezone.now()
-        ).first()
-        
-        if active_subscription:
-            return JsonResponse({
-                'success': False,
-                'error': f'You already have an active {active_subscription.plan.name} plan until {active_subscription.end_date.strftime("%Y-%m-%d")}'
-            }, status=400)
-        
-        # Initialize payment
-        reference = generate_reference()
-        expiry_date = timezone.now() + timedelta(days=plan.duration_days)
+    """
+    Start a Paystack checkout for a subscription plan (React).
 
-        # Defensive price validation before charging (guards against
-        # zero/negative/garbage amounts reaching Paystack).
-        try:
-            validated_price = validate_plan_price(plan.price)
-        except ValueError as price_error:
-            return JsonResponse({
-                'success': False,
-                'error': str(price_error)
-            }, status=400)
-        
-        payment = Payment.objects.create(
-            user=request.user,
-            amount=plan.price,
-            reference=reference,
-            email=request.user.email,
-            expiry_date=expiry_date,
-            plan=plan,
-            status='pending'
-        )
-        
-        # Prepare Paystack request
-        amount_in_kobo = validated_price * 100
-        headers = {
-            "Authorization": f"Bearer {settings.PAYSTACK_LIVE_SECRET_KEY}",
-            "Content-Type": "application/json",
-        }
-        
-        paystack_data = {
-            "email": request.user.email,
-            "amount": amount_in_kobo,
-            "reference": reference,
-            "callback_url": request.build_absolute_uri(reverse('payments:verify_payment')),
-            "metadata": {
-                "user_id": request.user.id,
-                "plan_id": plan.id,
-                "plan_name": plan.name
-            }
-        }
-        
+    Request (JSON or form): {"plan_id": 2, "callback_url": optional}
+    Success: {"success": true, "authorization_url": "...", "access_code": "...",
+              "reference": "PAS-...", "amount": 8500, "plan": {...}}
+    Errors are {"success": false, "code": ..., "error": ...} with:
+      400 invalid_request / plan_required / invalid_plan / email_required /
+          invalid_price / admin_full_access
+      404 plan_not_found
+      409 already_subscribed
+      502 paystack_error / paystack_unreachable
+      503 payment_not_configured
+    """
+    def fail(code, message, http_status, **extra):
+        body = {'success': False, 'code': code, 'error': message}
+        body.update(extra)
+        return JsonResponse(body, status=http_status)
+
+    # Admins already have full access - nothing to buy.
+    if request.user.is_staff or request.user.is_superuser:
+        return fail('admin_full_access',
+                    'Administrators do not need to subscribe. You already have full access.', 400)
+
+    try:
+        data = _request_data(request)
+    except ValueError as exc:
+        return fail('invalid_request', str(exc), 400)
+
+    plan_id = data.get('plan_id') or data.get('plan')
+    if plan_id in (None, ''):
+        return fail('plan_required', 'Please choose a subscription plan.', 400)
+    try:
+        plan_id = int(plan_id)
+    except (TypeError, ValueError):
+        return fail('invalid_plan', 'Invalid plan selected.', 400)
+
+    plan = SubscriptionPlan.objects.filter(id=plan_id).first()
+    if plan is None:
+        return fail('plan_not_found',
+                    'That plan is no longer available. Please refresh the page and choose again.', 404)
+
+    email = (request.user.email or '').strip()
+    if not email:
+        return fail('email_required',
+                    'Add an email address to your profile before paying - Paystack sends your receipt there.',
+                    400)
+
+    active_subscription = UserPlanSubscription.objects.filter(
+        user=request.user,
+        is_active=True,
+        end_date__gte=timezone.now()
+    ).select_related('plan').first()
+    if active_subscription:
+        return fail('already_subscribed',
+                    f'You already have an active {active_subscription.plan.name} plan until '
+                    f'{active_subscription.end_date.strftime("%Y-%m-%d")}.', 409)
+
+    try:
+        amount_naira = _plan_charge_naira(plan)
+    except ValueError as price_error:
+        return fail('invalid_price', str(price_error), 400)
+
+    secret_key = getattr(settings, 'PAYSTACK_LIVE_SECRET_KEY', '') or ''
+    if not secret_key:
+        logger.error("PAYSTACK_LIVE_SECRET_KEY is not set - cannot initialize payments")
+        return fail('payment_not_configured',
+                    'Online payment is temporarily unavailable. Please try again later.', 503)
+
+    reference = generate_reference()
+    payment = Payment.objects.create(
+        user=request.user,
+        amount=amount_naira,
+        reference=reference,
+        email=email,
+        expiry_date=timezone.now() + timedelta(days=plan.duration_days),
+        plan=plan,
+        status='pending'
+    )
+
+    paystack_data = {
+        "email": email,
+        "amount": amount_naira * 100,  # Paystack expects an integer in kobo
+        "currency": "NGN",
+        "reference": reference,
+        "callback_url": _payment_callback_url(request, data.get('callback_url')),
+        "metadata": {
+            "user_id": request.user.id,
+            "plan_id": plan.id,
+            "plan_name": plan.name,
+        },
+    }
+
+    try:
         response = requests.post(
             settings.PAYSTACK_INITIALIZE_PAYMENT_URL,
             json=paystack_data,
-            headers=headers,
-            timeout=30
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
         )
-        
         response_data = response.json()
-        
-        if response_data.get("status"):
-            return JsonResponse({
-                'success': True,
-                'authorization_url': response_data["data"]["authorization_url"],
-                'reference': reference,
-                'payment_id': payment.id
-            })
-        else:
-            payment.status = 'failed'
-            payment.save()
-            return JsonResponse({
-                'success': False,
-                'error': response_data.get('message', 'Payment initialization failed')
-            }, status=400)
-            
-    except SubscriptionPlan.DoesNotExist:
-        return JsonResponse({
-            'success': False,
-            'error': 'Invalid subscription plan selected'
-        }, status=400)
-    except json.JSONDecodeError:
-        return JsonResponse({
-            'success': False,
-            'error': 'Invalid request data'
-        }, status=400)
-    except Exception as e:
-        logger.error(f"API payment initialization error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+    except (requests.exceptions.RequestException, ValueError) as exc:
+        logger.error("Paystack initialize request failed: %s", exc)
+        payment.status = 'failed'
+        payment.save(update_fields=['status'])
+        return fail('paystack_unreachable',
+                    'Could not reach the payment provider. Please try again in a moment.', 502)
+
+    authorization_url = (response_data.get('data') or {}).get('authorization_url') \
+        if isinstance(response_data, dict) else None
+    if not (isinstance(response_data, dict) and response_data.get('status') and authorization_url):
+        message = response_data.get('message') if isinstance(response_data, dict) else None
+        logger.error("Paystack initialize rejected (%s): %s", response.status_code, message)
+        payment.status = 'failed'
+        payment.save(update_fields=['status'])
+        return fail('paystack_error', message or 'Payment initialization failed. Please try again.', 502)
+
+    return JsonResponse({
+        'success': True,
+        'authorization_url': authorization_url,
+        'access_code': response_data['data'].get('access_code'),
+        'reference': reference,
+        'payment_id': payment.id,
+        'amount': amount_naira,
+        'currency': 'NGN',
+        'plan': {'id': plan.id, 'name': plan.name, 'duration_days': plan.duration_days},
+    })
 
 
-@login_required
+@api_login_required
 @require_GET
 def api_verify_payment(request):
     """API endpoint to verify payment status (for React)"""
@@ -277,7 +364,24 @@ def api_verify_payment(request):
         )
         response_data = response.json()
         
-        if response_data.get("status") and response_data["data"].get("status") == "success":
+        paid = response_data.get("status") and (response_data.get("data") or {}).get("status") == "success"
+        if paid and existing_payment is not None:
+            # Never activate a plan for less than its price (e.g. an amount
+            # altered client-side before reaching Paystack).
+            paid_kobo = int(response_data["data"].get("amount") or 0)
+            expected_kobo = int(round(float(existing_payment.amount) * 100))
+            if paid_kobo < expected_kobo:
+                logger.warning("Underpaid reference %s: paid %s kobo, expected %s",
+                               reference, paid_kobo, expected_kobo)
+                existing_payment.status = 'failed'
+                existing_payment.save(update_fields=['status'])
+                return JsonResponse({
+                    'success': False,
+                    'verified': False,
+                    'code': 'amount_mismatch',
+                    'error': 'The amount paid does not match the plan price. Please contact support.'
+                }, status=400)
+        if paid:
             # Update or create payment record. update_or_create is now safe:
             # we've already confirmed above that any existing record for this
             # reference belongs to request.user (or no record exists yet).

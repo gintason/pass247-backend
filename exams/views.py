@@ -143,6 +143,16 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
+        # Banks created on the fly by the Practice Portal / Main Exam engine
+        # are internal; listing them here would duplicate subjects in the
+        # existing practice pages. ?bank_type=PRACTICE opts in explicitly.
+        bank_type = (self.request.query_params.get('bank_type') or '').upper()
+        if self.action == 'list':
+            queryset = queryset.filter(is_auto_generated=False)
+            if bank_type in dict(QuestionBank.BANK_TYPES):
+                queryset = queryset.filter(bank_type=bank_type)
+            else:
+                queryset = queryset.filter(bank_type=QuestionBank.BANK_TYPE_EXAM)
         exam_category_param = self.request.query_params.get('exam_category')
         if exam_category_param:
             if exam_category_param.isdigit():
@@ -508,6 +518,14 @@ class FreeTrialViewSet(viewsets.ViewSet):
         })
 
 
+class SessionError(Exception):
+    """Raised inside session actions; rendered as {'error', 'code'} JSON."""
+
+    def __init__(self, message, code, http_status):
+        super().__init__(message)
+        self.message, self.code, self.http_status = message, code, http_status
+
+
 class PracticeSessionViewSet(viewsets.ModelViewSet):
     serializer_class = PracticeSessionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -515,10 +533,56 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         return PracticeSession.objects.filter(user=self.request.user)
+
+    def get_object(self):
+        """
+        Structured 404 instead of DRF's bare {"detail": "Not found."}: the
+        session id may be wrong, deleted, or belong to another account (e.g.
+        after logging in as someone else in the same browser).
+        """
+        lookup = self.kwargs.get(self.lookup_field)
+        session = PracticeSession.objects.filter(pk=lookup).select_related(
+            'question_bank__subject', 'question_bank__exam_category').first() \
+            if str(lookup).isdigit() else None
+        if session is None or session.user_id != self.request.user.id:
+            raise SessionError(
+                'This practice session could not be found for your account. '
+                'Please start a new session.',
+                'session_not_found', status.HTTP_404_NOT_FOUND)
+        self.check_object_permissions(self.request, session)
+        return session
+
+    def handle_exception(self, exc):
+        if isinstance(exc, SessionError):
+            return Response({'error': exc.message, 'code': exc.code}, status=exc.http_status)
+        return super().handle_exception(exc)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Validate before creating: unknown bank -> 404, empty bank -> 400
+        (an empty session is what produced the 404 on current_question), and
+        Main Exam / timed sessions need a paid plan -> 402.
+        """
+        from .views_portal import has_main_exam_access, upgrade_required_response
+        bank_id = request.data.get('question_bank')
+        bank = QuestionBank.objects.filter(id=bank_id).first() if str(bank_id).isdigit() else None
+        if bank is None:
+            return Response({'error': 'Question bank not found', 'code': 'bank_not_found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not bank.questions.exists():
+            return Response({
+                'error': f'"{bank.name}" has no questions yet. Please choose another subject.',
+                'code': 'no_questions'}, status=status.HTTP_400_BAD_REQUEST)
+        session_type = str(request.data.get('session_type') or 'PRACTICE').upper()
+        # Main Exam banks built by /main-exam/start/ hold the paid papers;
+        # they cannot be opened through this endpoint under another type.
+        main_exam_bank = bank.is_auto_generated and bank.bank_type == QuestionBank.BANK_TYPE_EXAM
+        if (session_type in ('EXAM', 'TIMED') or main_exam_bank) and not has_main_exam_access(request.user):
+            return upgrade_required_response()
+        return super().create(request, *args, **kwargs)
     
     def perform_create(self, serializer):
-        question_bank_id = self.request.data.get('question_bank')
-        question_bank = QuestionBank.objects.get(id=question_bank_id)
+        question_bank = QuestionBank.objects.get(id=self.request.data.get('question_bank'))
         questions = list(question_bank.questions.all())
         random.shuffle(questions)
         questions_order = [q.id for q in questions]
@@ -527,6 +591,51 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             total_questions=len(questions),
             questions_order=questions_order
         )
+
+    def _current_question_or_error(self, session):
+        """
+        Current question, skipping ids whose Question was deleted after the
+        session started. Raises SessionError with a code the frontend acts on.
+        """
+        if session.status == 'COMPLETED':
+            raise SessionError('Session already completed', 'session_completed',
+                               status.HTTP_400_BAD_REQUEST)
+        order = session.questions_order or []
+        if not order:
+            raise SessionError('This session has no questions. Please start a new session.',
+                               'no_questions', status.HTTP_400_BAD_REQUEST)
+        existing = set(Question.objects.filter(id__in=order).values_list('id', flat=True))
+        index = session.current_question_index
+        while index < len(order) and order[index] not in existing:
+            index += 1
+        if index >= len(order):
+            # Nothing left to answer: the frontend shows the summary.
+            raise SessionError('Session already completed', 'session_finished',
+                               status.HTTP_400_BAD_REQUEST)
+        if index != session.current_question_index:
+            session.current_question_index = index
+            session.save(update_fields=['current_question_index'])
+        return Question.objects.get(id=order[index])
+
+    def _session_info(self, session):
+        from .views_portal import session_time_remaining
+        from .category_utils import category_slug
+        bank = session.question_bank
+        return {
+            'id': session.id,
+            'session_type': session.session_type,
+            'status': session.status,
+            'total_questions': session.total_questions,
+            'correct_answers': session.correct_answers,
+            'wrong_answers': session.wrong_answers,
+            'question_bank_name': bank.name,
+            'bank_type': bank.bank_type,
+            'subject_id': bank.subject_id,
+            'subject_name': bank.subject.name,
+            'exam_category': category_slug(bank.exam_category),
+            'duration_minutes': bank.duration_minutes if session.session_type == 'EXAM' else None,
+            'time_remaining_seconds': session_time_remaining(session),
+        }
 
     @action(detail=True, methods=['post'])
     def check_answer(self, request, pk=None):
@@ -562,13 +671,32 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
                 )
         
         question_id = request.data.get('question_id')
-        selected_answer = request.data.get('selected_answer')
-        time_spent = request.data.get('time_spent_seconds', 0)
+        selected_answer = str(request.data.get('selected_answer') or '').strip()
+        try:
+            time_spent = max(0, int(request.data.get('time_spent_seconds', 0) or 0))
+        except (TypeError, ValueError):
+            time_spent = 0
+
+        if session.status == 'COMPLETED':
+            return Response({'error': 'Session already completed', 'code': 'session_completed'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not selected_answer:
+            return Response({'error': 'Please select an answer first', 'code': 'answer_required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from .views_portal import session_time_remaining
+        remaining = session_time_remaining(session)
+        # 60s grace for network latency on the last answer.
+        if remaining == 0 and (timezone.now() - session.started_at).total_seconds() > \
+                session.question_bank.duration_minutes * 60 + 60:
+            return Response({'error': "Time is up for this exam. Submit to see your result.",
+                             'code': 'time_up'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             question = Question.objects.get(id=question_id)
-        except Question.DoesNotExist:
-            return Response({'error': 'Question not found'}, status=status.HTTP_404_NOT_FOUND)
+        except (Question.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Question not found', 'code': 'question_not_found'},
+                            status=status.HTTP_404_NOT_FOUND)
         
         current_question = session.get_next_question()
         if not current_question or current_question.id != question.id:
@@ -580,7 +708,8 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         is_correct = False
         points_earned = 0
         if question.question_type == 'OBJECTIVE':
-            is_correct = (question.correct_answer.upper() == selected_answer.upper())
+            is_correct = bool(question.correct_answer) and \
+                question.correct_answer.upper() == selected_answer.upper()
             if is_correct:
                 points_earned = 25
         
@@ -693,12 +822,13 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def current_question(self, request, pk=None):
+        """
+        Errors are structured {'error', 'code'} so the session page can react:
+        session_not_found (404), session_completed / session_finished (400 ->
+        show summary), no_questions (400 -> back to subject list).
+        """
         session = self.get_object()
-        if session.status == 'COMPLETED':
-            return Response({'error': 'Session already completed'}, status=status.HTTP_400_BAD_REQUEST)
-        question = session.get_next_question()
-        if not question:
-            return Response({'error': 'No more questions'}, status=status.HTTP_404_NOT_FOUND)
+        question = self._current_question_or_error(session)
         answer = UserAnswer.objects.filter(session=session, question=question).first()
         response_data = {
             'question': QuestionWithExplanationSerializer(question, context={'request': request}).data,
@@ -707,6 +837,7 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
             'has_been_answered': answer is not None,
             'previous_answer': answer.selected_answer if answer else None,
             'was_correct': answer.is_correct if answer else None,
+            'session': self._session_info(session),
         }
         return Response(response_data)
     
@@ -1446,6 +1577,9 @@ def get_study_notes(request, subject_id):
     })
 
 
+PAST_QUESTIONS_LIMIT = 500
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def get_past_questions(request, subject_id):
@@ -1468,6 +1602,11 @@ def get_past_questions(request, subject_id):
     from .category_utils import resolve_exam_category
     exam_category = resolve_exam_category(exam_category_param) if exam_category_param else None
 
+    # ?year=2023 filters on the server so the Year Picker shows every
+    # question for that year, not just those inside the first page.
+    year = request.query_params.get('year')
+    year = int(year) if year and str(year).isdigit() else None
+
     # Get past question collections
     collections = PastQuestionCollection.objects.filter(
         subject=subject,
@@ -1477,52 +1616,51 @@ def get_past_questions(request, subject_id):
     if exam_category:
         collections = collections.filter(exam_category=exam_category)
 
-    all_questions = []
-    if collections.exists():
-        for collection in collections:
-            questions = collection.questions.filter(is_published=True)
-            all_questions.extend(questions)
+    collection_question_ids = set()
+    for collection in collections:
+        collection_question_ids.update(
+            collection.questions.filter(is_published=True).values_list('id', flat=True))
 
-    # Fall back to direct questions if no collection questions were found.
-    if not all_questions:
-        questions = Question.objects.filter(
+    if collection_question_ids:
+        base = Question.objects.filter(id__in=collection_question_ids)
+    else:
+        # Fall back to questions tagged with a year for this subject - i.e.
+        # past exam questions uploaded without being put in a collection.
+        base = Question.objects.filter(
             subject=subject,
             is_published=True,
-            question_type='OBJECTIVE'
+            question_type='OBJECTIVE',
+            exam_year__isnull=False,
         )
-
         if exam_category:
-            questions = questions.filter(exam_category=exam_category)
+            base = base.filter(exam_category=exam_category)
 
-        questions = list(
-            questions.select_related('exam_year', 'subject', 'exam_category')
-            .order_by('-exam_year__year')[:50]
-        )
-    else:
-        # Deduplicate collection questions. Note `questions` is now a plain
-        # list, so ordering must use sorted()/list.sort() - calling the
-        # queryset method .order_by() on it (as an earlier version did) would
-        # raise AttributeError.
-        unique_questions = list({q.id: q for q in all_questions}.values())
-        unique_questions.sort(
-            key=lambda q: q.exam_year.year if q.exam_year else 0,
-            reverse=True
-        )
-        questions = unique_questions[:50]
-
-    serializer = PastQuestionSerializer(questions, many=True)
-
+    # Years come from the full set (before the year filter and the limit),
+    # otherwise the picker would only offer the years on the first page.
     years = sorted(
-        {q.exam_year.year for q in questions if q.exam_year},
+        set(base.exclude(exam_year=None).values_list('exam_year__year', flat=True)),
         reverse=True
     )
+
+    questions = base
+    if year:
+        questions = questions.filter(exam_year__year=year)
+    total = questions.count()
+    questions = list(
+        questions.select_related('exam_year', 'subject', 'exam_category')
+        .order_by('-exam_year__year', 'id')[:PAST_QUESTIONS_LIMIT]
+    )
+
+    serializer = PastQuestionSerializer(questions, many=True)
 
     return Response({
         'subject_id': subject.id,
         'subject_name': subject.name,
         'questions': serializer.data,
-        'total_questions': len(questions),
-        'available_years': years
+        'total_questions': total,
+        'returned_questions': len(questions),
+        'available_years': years,
+        'year': year,
     })
 
 

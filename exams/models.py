@@ -32,8 +32,8 @@ class ExamCategory(models.Model):
         verbose_name_plural = "Exam Categories"
         ordering = ['order', 'name']
 
-        def __str__(self):
-            return self.display_name
+    def __str__(self):
+        return self.display_name
 
 
 class Subject(models.Model):
@@ -81,6 +81,21 @@ class Question(models.Model):
         ('OBJECTIVE', 'Objective (Multiple Choice)'),
         ('THEORY', 'Theory'),
     ]
+
+    # Where a question may be used. Practice questions are free for every
+    # signed-up student (instant feedback); Main Exam questions are the
+    # timed, paid exam engine. Existing questions default to BOTH so nothing
+    # disappears from either engine after the migration.
+    USAGE_PRACTICE = 'PRACTICE'
+    USAGE_EXAM = 'EXAM'
+    USAGE_BOTH = 'BOTH'
+    USAGE_CHOICES = [
+        (USAGE_BOTH, 'Practice & Main Exam'),
+        (USAGE_PRACTICE, 'Practice only'),
+        (USAGE_EXAM, 'Main Exam only'),
+    ]
+    PRACTICE_USAGES = (USAGE_PRACTICE, USAGE_BOTH)
+    EXAM_USAGES = (USAGE_EXAM, USAGE_BOTH)
     
     question_text = models.TextField()
     question_type = models.CharField(max_length=20, choices=QUESTION_TYPES, default='OBJECTIVE')
@@ -88,6 +103,16 @@ class Question(models.Model):
     exam_category = models.ForeignKey(ExamCategory, on_delete=models.CASCADE, related_name='questions')
     exam_year = models.ForeignKey(ExamYear, on_delete=models.SET_NULL, null=True, blank=True, related_name='questions')
     difficulty = models.CharField(max_length=10, choices=DIFFICULTY_LEVELS, default='MEDIUM')
+    usage = models.CharField(
+        max_length=10, choices=USAGE_CHOICES, default=USAGE_BOTH, db_index=True,
+        help_text="Practice questions are free for signed-up students; "
+                  "Main Exam questions power the timed (paid) exam mode."
+    )
+    practice_category = models.ForeignKey(
+        'PracticeCategory', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='questions',
+        help_text="Optional practice set / topic this question belongs to."
+    )
     marks = models.PositiveIntegerField(default=1)
     time_limit_seconds = models.PositiveIntegerField(
         null=True, 
@@ -155,14 +180,81 @@ class Question(models.Model):
         return self.model_answer
 
 
+class PracticeCategory(models.Model):
+    """
+    A practice set / topic group (e.g. "JSSCE Mathematics - Number Bases").
+    Practice questions are free for every signed-up student and are kept
+    apart from the timed Main Exam question banks.
+    """
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    exam_category = models.ForeignKey(ExamCategory, on_delete=models.CASCADE, related_name='practice_categories')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='practice_categories')
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Practice Categories"
+        ordering = ['exam_category__order', 'subject__name', 'order', 'name']
+        unique_together = ['exam_category', 'subject', 'name']
+
+    def __str__(self):
+        return f"{self.exam_category.display_name} · {self.subject.name} · {self.name}"
+
+    def practice_questions(self):
+        return self.questions.filter(
+            is_published=True, usage__in=Question.PRACTICE_USAGES
+        )
+
+
+class PracticeQuestionManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(usage__in=Question.PRACTICE_USAGES)
+
+
+class PracticeQuestion(Question):
+    """
+    Admin-facing view of the questions usable in Practice mode. Same table as
+    Question (proxy model), so practice items can be managed in their own
+    admin section without duplicating the question schema.
+    """
+    objects = PracticeQuestionManager()
+
+    class Meta:
+        proxy = True
+        verbose_name = "Practice Question"
+        verbose_name_plural = "Practice Questions"
+
+
 class QuestionBank(models.Model):
     """Collection of questions for practice or exams"""
+    BANK_TYPE_EXAM = 'EXAM'
+    BANK_TYPE_PRACTICE = 'PRACTICE'
+    BANK_TYPES = [
+        (BANK_TYPE_EXAM, 'Main Exam'),
+        (BANK_TYPE_PRACTICE, 'Practice'),
+    ]
     name = models.CharField(max_length=200)
     description = models.TextField()
     exam_category = models.ForeignKey(ExamCategory, on_delete=models.CASCADE, related_name='question_banks')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='question_banks')
     exam_year = models.ForeignKey(ExamYear, on_delete=models.SET_NULL, null=True, blank=True)
     questions = models.ManyToManyField(Question, related_name='question_banks')
+    bank_type = models.CharField(
+        max_length=10, choices=BANK_TYPES, default=BANK_TYPE_EXAM, db_index=True,
+        help_text="Practice banks are created automatically by the Practice Portal."
+    )
+    practice_category = models.ForeignKey(
+        PracticeCategory, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='banks'
+    )
+    is_auto_generated = models.BooleanField(
+        default=False,
+        help_text="Created by the Practice Portal / Main Exam engine. Hidden from "
+                  "the regular question-bank listings."
+    )
     duration_minutes = models.PositiveIntegerField(default=60, help_text="Duration for full exam mode")
     total_marks = models.PositiveIntegerField(default=100)
     pass_mark = models.PositiveIntegerField(default=50, help_text="Minimum marks to pass")
@@ -436,3 +528,60 @@ class PastQuestionCollection(models.Model):
 
     def __str__(self):
         return f"{self.exam_category.display_name} {self.subject.name} {self.exam_year.year if self.exam_year else ''}"
+
+
+def syllabus_storage():
+    """
+    PDFs/Word files are not images, so on Cloudinary they must go to the
+    'raw' resource type - MediaCloudinaryStorage (the project default) only
+    accepts images and would reject or mangle them.
+    """
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+    if 'cloudinary' in str(getattr(settings, 'DEFAULT_FILE_STORAGE', '')):
+        from cloudinary_storage.storage import RawMediaCloudinaryStorage
+        return RawMediaCloudinaryStorage()
+    return default_storage
+
+
+class ExamSyllabus(models.Model):
+    """Official syllabus documents per exam body (and optionally per subject)."""
+    ALLOWED_EXTENSIONS = ('.pdf', '.md', '.markdown', '.txt', '.docx')
+
+    exam_category = models.ForeignKey(ExamCategory, on_delete=models.CASCADE, related_name='syllabuses')
+    subject = models.ForeignKey(
+        Subject, on_delete=models.CASCADE, related_name='syllabuses', null=True, blank=True,
+        help_text="Leave empty for a general syllabus covering the whole exam body."
+    )
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    edition = models.CharField(max_length=50, blank=True, help_text="e.g. 2025/2026")
+    file = models.FileField(
+        upload_to='syllabuses/', storage=syllabus_storage, blank=True, null=True,
+        help_text="PDF, Word (.docx), Markdown or text file."
+    )
+    content = models.TextField(
+        blank=True,
+        help_text="Markdown shown on the site. Filled automatically when a "
+                  ".docx/.md/.txt file is uploaded."
+    )
+    external_url = models.URLField(blank=True, help_text="Optional link to the official syllabus page.")
+    is_active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_syllabuses')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Exam Syllabus"
+        verbose_name_plural = "Exam Syllabuses"
+        ordering = ['exam_category__order', 'order', 'subject__name', 'title']
+
+    def __str__(self):
+        scope = self.subject.name if self.subject else 'General'
+        return f"{self.exam_category.display_name} · {scope} · {self.title}"
+
+    @property
+    def file_extension(self):
+        import os
+        return os.path.splitext(self.file.name)[1].lower() if self.file else ''

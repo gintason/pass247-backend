@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse, path
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import redirect, render
 from django.contrib import messages
 from django.http import HttpResponse
@@ -23,7 +23,8 @@ except ImportError:
 from .models import (
     ExamCategory, Subject, ExamYear, Question, QuestionBank,
     UserSubscription, FreeTrialUsage, PracticeSession, UserAnswer,
-    UserPerformance, ExamResult, Bookmark, StudyNotes, PastQuestionCollection
+    UserPerformance, ExamResult, Bookmark, StudyNotes, PastQuestionCollection,
+    PracticeCategory, PracticeQuestion, ExamSyllabus,
 )
 
 # Try to import bulk upload utilities
@@ -124,14 +125,15 @@ class QuestionBankQuestionInline(admin.TabularInline):
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'short_question', 'subject', 'exam_category', 
-        'question_type', 'difficulty', 'marks', 'is_published', 
+        'id', 'short_question', 'subject', 'exam_category', 'exam_year',
+        'usage', 'question_type', 'difficulty', 'marks', 'is_published',
         'times_used', 'created_at'
     ]
     list_filter = [
-        'question_type', 'difficulty', 'is_published', 
-        'subject', 'exam_category', 'created_at'
+        'usage', 'question_type', 'difficulty', 'is_published',
+        'subject', 'exam_category', 'exam_year', 'practice_category', 'created_at'
     ]
+    actions = ['mark_practice_only', 'mark_exam_only', 'mark_both']
     search_fields = ['question_text', 'explanation', 'reference']
     list_editable = ['is_published', 'marks', 'difficulty']
     readonly_fields = ['times_used', 'created_at', 'updated_at']
@@ -149,6 +151,12 @@ class QuestionAdmin(admin.ModelAdmin):
                 'exam_category', 'exam_year', 'difficulty', 'marks',
                 'time_limit_seconds'
             )
+        }),
+        ('Practice vs Main Exam', {
+            'fields': ('usage', 'practice_category'),
+            'description': 'Practice questions are free for every signed-up student '
+                           '(instant feedback). Main Exam questions power the timed, '
+                           'paid exam mode. "Practice & Main Exam" uses it in both.',
         }),
         ('Diagram & Passage (optional)', {
             'fields': ('diagram_url', 'essay_paragraph'),
@@ -186,6 +194,22 @@ class QuestionAdmin(admin.ModelAdmin):
     def short_question(self, obj):
         return obj.question_text[:50] + '...' if len(obj.question_text) > 50 else obj.question_text
     short_question.short_description = 'Question'
+
+    def _set_usage(self, request, queryset, usage, label):
+        updated = queryset.update(usage=usage)
+        self.message_user(request, f'{updated} question(s) set to "{label}".', messages.SUCCESS)
+
+    @admin.action(description='Use selected questions for Practice only')
+    def mark_practice_only(self, request, queryset):
+        self._set_usage(request, queryset, Question.USAGE_PRACTICE, 'Practice only')
+
+    @admin.action(description='Use selected questions for Main Exam only')
+    def mark_exam_only(self, request, queryset):
+        self._set_usage(request, queryset, Question.USAGE_EXAM, 'Main Exam only')
+
+    @admin.action(description='Use selected questions for Practice & Main Exam')
+    def mark_both(self, request, queryset):
+        self._set_usage(request, queryset, Question.USAGE_BOTH, 'Practice & Main Exam')
     
     def save_model(self, request, obj, form, change):
         if not obj.created_by:
@@ -356,12 +380,12 @@ class QuestionAdmin(admin.ModelAdmin):
 @admin.register(QuestionBank)
 class QuestionBankAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'subject', 'exam_category', 'exam_year', 
+        'name', 'bank_type', 'subject', 'exam_category', 'exam_year',
         'question_count_display', 'is_free', 'has_free_trial', 
-        'free_trial_questions', 'is_active'
+        'free_trial_questions', 'is_active', 'is_auto_generated'
     ]
     list_filter = [
-        'is_free', 'has_free_trial', 'is_active', 
+        'bank_type', 'is_auto_generated', 'is_free', 'has_free_trial', 'is_active',
         'exam_category', 'subject', 'exam_year'
     ]
     search_fields = ['name', 'description']
@@ -376,7 +400,8 @@ class QuestionBankAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'description', 'exam_category', 'subject', 'exam_year')
+            'fields': ('name', 'description', 'exam_category', 'subject', 'exam_year',
+                       'bank_type', 'practice_category', 'is_auto_generated')
         }),
         ('Exam Settings', {
             'fields': ('duration_minutes', 'total_marks', 'pass_mark')
@@ -629,6 +654,142 @@ class StudyNotesAdmin(admin.ModelAdmin):
                 request,
                 f'"{upload.name}" was converted into colour-coded study notes.'
             )
+
+
+# ============================================================
+# PRACTICE PORTAL ADMIN (practice sets, practice questions, syllabuses)
+# ============================================================
+@admin.register(PracticeCategory)
+class PracticeCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'exam_category', 'subject', 'question_count', 'order', 'is_active']
+    list_filter = ['is_active', 'exam_category', 'subject']
+    search_fields = ['name', 'description', 'subject__name']
+    list_editable = ['order', 'is_active']
+    autocomplete_fields = ['subject', 'exam_category']
+    readonly_fields = ['created_at', 'updated_at']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            _question_count=Count('questions', filter=Q(questions__usage__in=Question.PRACTICE_USAGES)))
+
+    def question_count(self, obj):
+        url = reverse('admin:exams_practicequestion_changelist') + f'?practice_category__id__exact={obj.id}'
+        return format_html('<a href="{}">{}</a>', url, obj._question_count)
+    question_count.short_description = 'Practice questions'
+    question_count.admin_order_field = '_question_count'
+
+
+@admin.register(PracticeQuestion)
+class PracticeQuestionAdmin(admin.ModelAdmin):
+    """
+    Practice questions in their own admin section (same table as Question).
+    New items default to "Practice only"; Bulk upload (Exams > Questions)
+    also accepts `usage` and `practice_category` columns.
+    """
+    list_display = ['id', 'short_question', 'subject', 'exam_category', 'practice_category',
+                    'usage', 'difficulty', 'is_published']
+    list_filter = ['usage', 'practice_category', 'subject', 'exam_category', 'difficulty', 'is_published']
+    search_fields = ['question_text', 'explanation']
+    list_editable = ['practice_category', 'is_published']
+    autocomplete_fields = ['subject', 'exam_category', 'practice_category']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Practice Set', {'fields': ('practice_category', 'usage')}),
+        ('Question', {'fields': ('question_text', 'question_type', 'subject', 'exam_category',
+                                 'exam_year', 'difficulty', 'marks')}),
+        ('Options & Answer', {'fields': ('option_a', 'option_b', 'option_c', 'option_d',
+                                         'option_e', 'correct_answer')}),
+        ('Feedback shown after answering', {'fields': ('explanation', 'reference', 'model_answer')}),
+        ('Media', {'fields': ('diagram_url', 'question_image', 'essay_paragraph'),
+                   'classes': ('collapse',)}),
+        ('Status', {'fields': ('is_published', 'created_at', 'updated_at')}),
+    )
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        initial.setdefault('usage', Question.USAGE_PRACTICE)
+        return initial
+
+    def short_question(self, obj):
+        text = obj.question_text or ''
+        return text[:60] + '...' if len(text) > 60 else text
+    short_question.short_description = 'Question'
+
+    def save_model(self, request, obj, form, change):
+        if not obj.created_by:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+class ExamSyllabusAdminForm(forms.ModelForm):
+    class Meta:
+        model = ExamSyllabus
+        fields = '__all__'
+        widgets = {
+            'content': forms.Textarea(attrs={'rows': 18, 'style': 'width: 95%; font-family: monospace;'}),
+        }
+
+    def clean_file(self):
+        upload = self.cleaned_data.get('file')
+        if not upload or not hasattr(upload, 'size') or not hasattr(upload, 'content_type'):
+            return upload  # unchanged existing file
+        name = upload.name.lower()
+        if not name.endswith(ExamSyllabus.ALLOWED_EXTENSIONS):
+            raise forms.ValidationError('Upload a PDF, Word (.docx), Markdown (.md) or text (.txt) file.')
+        if upload.size > 15 * 1024 * 1024:
+            raise forms.ValidationError('File is too large (max 15 MB).')
+        if not name.endswith('.pdf'):
+            try:
+                self.converted_content = convert_uploaded_file(upload)
+            except StudyNotesImportError as exc:
+                raise forms.ValidationError(str(exc))
+            upload.seek(0)
+        return upload
+
+    def clean(self):
+        cleaned = super().clean()
+        converted = getattr(self, 'converted_content', None)
+        if converted:
+            cleaned['content'] = converted
+        if not cleaned.get('file') and not (cleaned.get('content') or '').strip() \
+                and not cleaned.get('external_url'):
+            raise forms.ValidationError('Upload a file, paste the syllabus text, or add a link.')
+        return cleaned
+
+
+@admin.register(ExamSyllabus)
+class ExamSyllabusAdmin(admin.ModelAdmin):
+    form = ExamSyllabusAdminForm
+    list_display = ['title', 'exam_category', 'subject', 'edition', 'file_link', 'is_active', 'order']
+    list_filter = ['is_active', 'exam_category', 'subject']
+    search_fields = ['title', 'description', 'subject__name']
+    list_editable = ['is_active', 'order']
+    autocomplete_fields = ['exam_category', 'subject']
+    readonly_fields = ['uploaded_by', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Syllabus', {'fields': ('exam_category', 'subject', 'title', 'edition', 'description')}),
+        ('Document', {
+            'fields': ('file', 'content', 'external_url'),
+            'description': 'PDFs are offered to students to view/download. Word, Markdown and '
+                           'text files are also converted into the on-page text below.',
+        }),
+        ('Settings', {'fields': ('is_active', 'order', 'uploaded_by', 'created_at', 'updated_at')}),
+    )
+
+    def file_link(self, obj):
+        if not obj.file:
+            return '—'
+        try:
+            return format_html('<a href="{}" target="_blank">{}</a>', obj.file.url,
+                               obj.file_extension.lstrip('.').upper() or 'file')
+        except Exception:
+            return obj.file.name
+    file_link.short_description = 'File'
+
+    def save_model(self, request, obj, form, change):
+        if not obj.uploaded_by:
+            obj.uploaded_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 # ============================================================
