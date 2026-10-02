@@ -122,8 +122,200 @@ class QuestionBankQuestionInline(admin.TabularInline):
     autocomplete_fields = ['question']
 
 
+class QuestionBulkUploadMixin:
+    """
+    Excel/CSV bulk upload + template download, shared by the Exam Questions
+    and Practice Questions admins. URL names are derived from the model
+    (admin:exams_question_bulk_upload, admin:exams_practicequestion_bulk_upload).
+    """
+
+    # Overridden per admin: Exam Questions vs Practice Questions.
+    bulk_label = 'Exam Questions'
+    bulk_default_usage = None          # rows without a `usage` column keep BOTH
+    bulk_template_mode = 'exam'
+    bulk_template_filename = 'bulk_exam_question_template.xlsx'
+
+    def _bulk_url_name(self, action):
+        opts = self.model._meta
+        return f'{opts.app_label}_{opts.model_name}_{action}'
+
+    def _changelist_redirect(self):
+        opts = self.model._meta
+        return redirect(f'admin:{opts.app_label}_{opts.model_name}_changelist')
+
+    def changelist_view(self, request, extra_context=None):
+        """Add bulk upload buttons context to the list page"""
+        extra_context = extra_context or {}
+        extra_context['show_bulk_upload'] = True
+        extra_context['bulk_upload_url'] = reverse(f'admin:{self._bulk_url_name("bulk_upload")}')
+        extra_context['template_url'] = reverse(f'admin:{self._bulk_url_name("download_template")}')
+        extra_context['bulk_label'] = self.bulk_label
+        extra_context['dependencies_ok'] = BULK_UPLOAD_AVAILABLE and PANDAS_AVAILABLE
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('bulk-upload/', 
+                 self.admin_site.admin_view(self.bulk_upload_view), 
+                 name=self._bulk_url_name('bulk_upload')),
+            path('download-template/', 
+                 self.admin_site.admin_view(self.download_template_view), 
+                 name=self._bulk_url_name('download_template')),
+        ]
+        return custom_urls + urls
+    
+    def bulk_upload_view(self, request):
+        """Handle bulk upload of questions via Excel"""
+        if not BULK_UPLOAD_AVAILABLE or not PANDAS_AVAILABLE:
+            messages.error(request, '❌ Bulk upload dependencies are missing. Please install pandas and create bulk_upload_utils.py')
+            return self._changelist_redirect()
+        
+        if request.method == 'POST' and request.FILES.get('excel_file'):
+            excel_file = request.FILES['excel_file']
+            
+            if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.csv')):
+                messages.error(request, '❌ Please upload an Excel (.xlsx/.xls) or CSV (.csv) file')
+                return self._changelist_redirect()
+            
+            if excel_file.size > 10 * 1024 * 1024:
+                messages.error(request, '❌ File too large. Maximum size is 10MB')
+                return self._changelist_redirect()
+            
+            # Preserve the original extension so the parser can pick the right
+            # reader (CSV vs Excel).
+            suffix = '.csv' if excel_file.name.lower().endswith('.csv') else '.xlsx'
+            tmp_file_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    for chunk in excel_file.chunks():
+                        tmp_file.write(chunk)
+                    tmp_file_path = tmp_file.name
+                
+                options = {
+                    'create_question_banks': request.POST.get('create_question_banks') == 'on',
+                    'default_usage': self.bulk_default_usage,
+                    'default_practice_category': (request.POST.get('practice_category') or '').strip() or None,
+                }
+                
+                results = process_excel_upload(tmp_file_path, request.user, options)
+                
+                messages.success(request, 
+                    f"✅ Upload complete: {results['success_count']} {self.bulk_label.lower()} created, "
+                    f"{results['error_count']} errors")
+                
+                if results.get('question_banks_created'):
+                    messages.success(request, 
+                        f"📚 {len(results['question_banks_created'])} question banks created/updated")
+                
+                if results.get('errors'):
+                    for error in results['errors'][:5]:
+                        messages.warning(request, f"⚠️ Row {error['row']}: {error['error']}")
+                    
+            except Exception as e:
+                messages.error(request, f'❌ Error processing file: {str(e)}')
+            finally:
+                if tmp_file_path and os.path.exists(tmp_file_path):
+                    try:
+                        os.unlink(tmp_file_path)
+                    except Exception:
+                        pass
+            
+            return self._changelist_redirect()
+        
+        context = dict(
+            self.admin_site.each_context(request),
+            title=f'📤 Bulk Upload {self.bulk_label}',
+            opts=self.model._meta,
+            app_label=self.model._meta.app_label,
+            has_permission=True,
+            bulk_label=self.bulk_label,
+            is_practice=self.bulk_template_mode == 'practice',
+            template_url=reverse(f'admin:{self._bulk_url_name("download_template")}'),
+            changelist_url=reverse(f'admin:{self.model._meta.app_label}_{self.model._meta.model_name}_changelist'),
+        )
+        return render(request, "admin/exams/question/bulk_upload_form.html", context)
+    
+    def download_template_view(self, request):
+        """Download Excel template for bulk upload"""
+        if not PANDAS_AVAILABLE or not BULK_UPLOAD_AVAILABLE:
+            messages.error(request, '❌ Missing dependencies. Install pandas and create bulk_upload_utils.py')
+            return self._changelist_redirect()
+        
+        try:
+            df = generate_bulk_upload_template(self.bulk_template_mode)
+            
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Questions', index=False)
+                
+                instructions_data = {
+                    'Field': [
+                        'question_text', 'subject', 'exam_category', 'question_type',
+                        'difficulty', 'marks', 'option_a', 'option_b', 'option_c',
+                        'option_d', 'option_e', 'correct_answer', 'model_answer',
+                        'marking_guide', 'explanation', 'reference', 'exam_year',
+                        'time_limit_seconds', 'diagram_url', 'essay_paragraph',
+                        'usage', 'practice_category'
+                    ],
+                    'Required': [
+                        'YES', 'YES', 'YES', 'YES', 'YES', 'No',
+                        'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
+                        'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
+                        'For THEORY', 'For THEORY', 'No', 'No', 'No', 'No',
+                        'No', 'No', 'No', 'No'
+                    ],
+                    'Description': [
+                        'The actual question text',
+                        'Subject name or code',
+                        'Exam category name (WAEC, JAMB, NECO)',
+                        'OBJECTIVE or THEORY',
+                        'EASY, MEDIUM, or HARD',
+                        'Marks (integer)',
+                        'Option A text',
+                        'Option B text',
+                        'Option C text',
+                        'Option D text',
+                        'Option E text',
+                        'Correct: A, B, C, D, or E',
+                        'Model answer for theory',
+                        'Marking guide for theory',
+                        'Explanation for answer',
+                        'Reference source',
+                        'Exam year (e.g., 2023)',
+                        'Time limit in seconds',
+                        'Optional: image URL or file path for a diagram/figure '
+                        '(also accepted as column "diagram")',
+                        'Optional: comprehension passage / essay body (also '
+                        'accepted as column "comprehension_text")',
+                        'Optional: PRACTICE, EXAM or BOTH (blank = '
+                        + ('PRACTICE' if self.bulk_template_mode == 'practice' else 'BOTH') + ')',
+                        'Optional: practice set / topic name (created automatically)'
+                    ]
+                }
+                instructions_df = pd.DataFrame(instructions_data)
+                instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
+            
+            output.seek(0)
+            
+            response = HttpResponse(
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{self.bulk_template_filename}"'
+            
+            messages.success(request, '📥 Template downloaded successfully!')
+            return response
+            
+        except Exception as e:
+            messages.error(request, f'❌ Error generating template: {str(e)}')
+            return self._changelist_redirect()
+
+
+
+
 @admin.register(Question)
-class QuestionAdmin(admin.ModelAdmin):
+class QuestionAdmin(QuestionBulkUploadMixin, admin.ModelAdmin):
     list_display = [
         'id', 'short_question', 'subject', 'exam_category', 'exam_year',
         'usage', 'question_type', 'difficulty', 'marks', 'is_published',
@@ -216,167 +408,7 @@ class QuestionAdmin(admin.ModelAdmin):
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
     
-    def changelist_view(self, request, extra_context=None):
-        """Add bulk upload buttons context to the question list page"""
-        if extra_context is None:
-            extra_context = {}
-        
-        extra_context['show_bulk_upload'] = True
-        extra_context['bulk_upload_url'] = reverse('admin:exams_question_bulk_upload')
-        extra_context['template_url'] = reverse('admin:exams_question_download_template')
-        extra_context['dependencies_ok'] = BULK_UPLOAD_AVAILABLE and PANDAS_AVAILABLE
-        
-        return super().changelist_view(request, extra_context=extra_context)
     
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('bulk-upload/', 
-                 self.admin_site.admin_view(self.bulk_upload_view), 
-                 name='exams_question_bulk_upload'),
-            path('download-template/', 
-                 self.admin_site.admin_view(self.download_template_view), 
-                 name='exams_question_download_template'),
-        ]
-        return custom_urls + urls
-    
-    def bulk_upload_view(self, request):
-        """Handle bulk upload of questions via Excel"""
-        if not BULK_UPLOAD_AVAILABLE or not PANDAS_AVAILABLE:
-            messages.error(request, '❌ Bulk upload dependencies are missing. Please install pandas and create bulk_upload_utils.py')
-            return redirect('admin:exams_question_changelist')
-        
-        if request.method == 'POST' and request.FILES.get('excel_file'):
-            excel_file = request.FILES['excel_file']
-            
-            if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.csv')):
-                messages.error(request, '❌ Please upload an Excel (.xlsx/.xls) or CSV (.csv) file')
-                return redirect('admin:exams_question_changelist')
-            
-            if excel_file.size > 10 * 1024 * 1024:
-                messages.error(request, '❌ File too large. Maximum size is 10MB')
-                return redirect('admin:exams_question_changelist')
-            
-            # Preserve the original extension so the parser can pick the right
-            # reader (CSV vs Excel).
-            suffix = '.csv' if excel_file.name.lower().endswith('.csv') else '.xlsx'
-            tmp_file_path = None
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                    for chunk in excel_file.chunks():
-                        tmp_file.write(chunk)
-                    tmp_file_path = tmp_file.name
-                
-                options = {
-                    'create_question_banks': request.POST.get('create_question_banks') == 'on',
-                }
-                
-                results = process_excel_upload(tmp_file_path, request.user, options)
-                
-                messages.success(request, 
-                    f"✅ Upload complete: {results['success_count']} questions created, "
-                    f"{results['error_count']} errors")
-                
-                if results.get('question_banks_created'):
-                    messages.success(request, 
-                        f"📚 {len(results['question_banks_created'])} question banks created/updated")
-                
-                if results.get('errors'):
-                    for error in results['errors'][:5]:
-                        messages.warning(request, f"⚠️ Row {error['row']}: {error['error']}")
-                    
-            except Exception as e:
-                messages.error(request, f'❌ Error processing file: {str(e)}')
-            finally:
-                if tmp_file_path and os.path.exists(tmp_file_path):
-                    try:
-                        os.unlink(tmp_file_path)
-                    except Exception:
-                        pass
-            
-            return redirect('admin:exams_question_changelist')
-        
-        context = dict(
-            self.admin_site.each_context(request),
-            title='📤 Bulk Upload Questions',
-            opts=self.model._meta,
-            app_label=self.model._meta.app_label,
-            has_permission=True,
-        )
-        return render(request, "admin/exams/question/bulk_upload_form.html", context)
-    
-    def download_template_view(self, request):
-        """Download Excel template for bulk upload"""
-        if not PANDAS_AVAILABLE or not BULK_UPLOAD_AVAILABLE:
-            messages.error(request, '❌ Missing dependencies. Install pandas and create bulk_upload_utils.py')
-            return redirect('admin:exams_question_changelist')
-        
-        try:
-            df = generate_bulk_upload_template()
-            
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='Questions', index=False)
-                
-                instructions_data = {
-                    'Field': [
-                        'question_text', 'subject', 'exam_category', 'question_type',
-                        'difficulty', 'marks', 'option_a', 'option_b', 'option_c',
-                        'option_d', 'option_e', 'correct_answer', 'model_answer',
-                        'marking_guide', 'explanation', 'reference', 'exam_year',
-                        'time_limit_seconds', 'diagram_url', 'essay_paragraph'
-                    ],
-                    'Required': [
-                        'YES', 'YES', 'YES', 'YES', 'YES', 'No',
-                        'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
-                        'For OBJECTIVE', 'For OBJECTIVE', 'For OBJECTIVE',
-                        'For THEORY', 'For THEORY', 'No', 'No', 'No', 'No',
-                        'No', 'No'
-                    ],
-                    'Description': [
-                        'The actual question text',
-                        'Subject name or code',
-                        'Exam category name (WAEC, JAMB, NECO)',
-                        'OBJECTIVE or THEORY',
-                        'EASY, MEDIUM, or HARD',
-                        'Marks (integer)',
-                        'Option A text',
-                        'Option B text',
-                        'Option C text',
-                        'Option D text',
-                        'Option E text',
-                        'Correct: A, B, C, D, or E',
-                        'Model answer for theory',
-                        'Marking guide for theory',
-                        'Explanation for answer',
-                        'Reference source',
-                        'Exam year (e.g., 2023)',
-                        'Time limit in seconds',
-                        'Optional: image URL or file path for a diagram/figure '
-                        '(also accepted as column "diagram")',
-                        'Optional: comprehension passage / essay body (also '
-                        'accepted as column "comprehension_text")'
-                    ]
-                }
-                instructions_df = pd.DataFrame(instructions_data)
-                instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
-            
-            output.seek(0)
-            
-            response = HttpResponse(
-                output.getvalue(),
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            response['Content-Disposition'] = 'attachment; filename="bulk_question_template.xlsx"'
-            
-            messages.success(request, '📥 Template downloaded successfully!')
-            return response
-            
-        except Exception as e:
-            messages.error(request, f'❌ Error generating template: {str(e)}')
-            return redirect('admin:exams_question_changelist')
-
-
 @admin.register(QuestionBank)
 class QuestionBankAdmin(admin.ModelAdmin):
     list_display = [
@@ -680,12 +712,18 @@ class PracticeCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(PracticeQuestion)
-class PracticeQuestionAdmin(admin.ModelAdmin):
+class PracticeQuestionAdmin(QuestionBulkUploadMixin, admin.ModelAdmin):
     """
     Practice questions in their own admin section (same table as Question).
-    New items default to "Practice only"; Bulk upload (Exams > Questions)
-    also accepts `usage` and `practice_category` columns.
+    New items default to "Practice only". Bulk upload here works like Exam
+    Questions; rows without a `usage` column become Practice only.
     """
+    bulk_label = 'Practice Questions'
+    bulk_default_usage = Question.USAGE_PRACTICE
+    bulk_template_mode = 'practice'
+    bulk_template_filename = 'bulk_practice_question_template.xlsx'
+    change_list_template = "admin/exams/question/bulk_upload_changelist.html"
+
     list_display = ['id', 'short_question', 'subject', 'exam_category', 'practice_category',
                     'usage', 'difficulty', 'is_published']
     list_filter = ['usage', 'practice_category', 'subject', 'exam_category', 'difficulty', 'is_published']

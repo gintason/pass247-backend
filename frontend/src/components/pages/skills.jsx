@@ -19,6 +19,7 @@ const Skills = () => {
   const [lessonTitle, setLessonTitle] = useState('');
   const [lessonProgress, setLessonProgress] = useState(0);
   const [completedLessons, setCompletedLessons] = useState([1, 2, 3]);
+  const [currentLessonId, setCurrentLessonId] = useState(null);
   const inputRef = useRef(null);
 
   const lessons = [
@@ -37,7 +38,7 @@ const Skills = () => {
   useEffect(() => { if (isTypingActive && inputRef.current) inputRef.current.focus(); }, [isTypingActive]);
 
   const startLesson = (lesson) => {
-    setLessonText(lesson.text); setLessonTitle(lesson.title);
+    setLessonText(lesson.text); setLessonTitle(lesson.title); setCurrentLessonId(lesson.id);
     setIsTypingActive(true); setUserInput(''); setStartTime(null); setLessonProgress(0);
   };
 
@@ -53,8 +54,12 @@ const Skills = () => {
     const wordsTyped = userInput.trim().split(/\s+/).length;
     const wpm = Math.round(wordsTyped / timeTaken);
     const accuracy = calculateAccuracy();
-    setCompletedLessons([...completedLessons, currentLesson]);
-    setTypingStats({ wpm: Math.max(typingStats.wpm, wpm), accuracy, lessonsDone: completedLessons.length + 1 });
+    // `currentLesson` was never defined, so finishing a lesson threw a
+    // ReferenceError and crashed the Skills page.
+    const done = completedLessons.includes(currentLessonId)
+      ? completedLessons : [...completedLessons, currentLessonId];
+    setCompletedLessons(done);
+    setTypingStats({ wpm: Math.max(typingStats.wpm, wpm), accuracy, lessonsDone: done.length });
     toast.success(`Lesson completed! WPM: ${wpm}, Accuracy: ${accuracy}%`);
     setIsTypingActive(false);
   };

@@ -170,6 +170,10 @@ class Question(models.Model):
 
     class Meta:
         ordering = ['subject', 'id']
+        # Shown in the admin as "Exam Questions" (Practice Questions have
+        # their own section via the PracticeQuestion proxy).
+        verbose_name = 'Exam Question'
+        verbose_name_plural = 'Exam Questions'
 
     def __str__(self):
         return f"{self.subject.name}: {self.question_text[:50]}..."

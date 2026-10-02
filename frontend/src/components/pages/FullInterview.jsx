@@ -66,7 +66,7 @@ const FullInterview = () => {
             <div className="col-md-4 text-md-end mt-3 mt-md-0">
               <button 
                 className="btn btn-warning"
-                onClick={() => navigate(`/quiz/timed/${product.id}`)}
+                onClick={() => navigate(`/quiz/timed/${product.slug || product.id}`)}
               >
                 <i className="fas fa-play me-2"></i>
                 Take Quiz

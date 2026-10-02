@@ -249,7 +249,7 @@ class OwnAccountDataNotPaywalledTests(TestCase):
 
     def test_new_user_can_load_own_stats(self):
         self.client.force_login(self.user)
-        response = self.client.get('/api/exams/api/stats/')
+        response = self.client.get('/api/exams/stats/')
         self.assertNotEqual(
             response.status_code, 402,
             'own practice stats are paywalled — new users get a broken dashboard'
@@ -258,7 +258,7 @@ class OwnAccountDataNotPaywalledTests(TestCase):
 
     def test_new_user_can_load_own_profile(self):
         self.client.force_login(self.user)
-        response = self.client.get('/api/exams/api/profile/')
+        response = self.client.get('/api/exams/profile/')
         self.assertNotEqual(
             response.status_code, 402,
             'own profile is paywalled'
@@ -266,7 +266,7 @@ class OwnAccountDataNotPaywalledTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
 
     def test_stats_still_require_authentication(self):
-        response = self.client.get('/api/exams/api/stats/')
+        response = self.client.get('/api/exams/stats/')
         self.assertIn(
             response.status_code, (302, 401, 403),
             f'unauthenticated access should be refused, got {response.status_code}'

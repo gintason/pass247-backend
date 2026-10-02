@@ -46,7 +46,13 @@ const Register = () => {
     if (result.success) {
       // The account is created but inactive until the emailed code is
       // entered, so go straight to verification.
-      toast.success('Account created. Check your email for a code.');
+      if (result.data?.email_sent === false) {
+        // The account exists but the code email failed; the next screen has
+        // a "send a new code" button.
+        toast.warning(result.data.message, { autoClose: 9000 });
+      } else {
+        toast.success('Account created. Check your email for a code.');
+      }
       navigate('/verify-email', {
         state: { email: result.email || formData.email }
       });

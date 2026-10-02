@@ -63,6 +63,8 @@ const VerifyEmail = () => {
       toast.info('If that account is awaiting verification, a new code is on its way.');
     } else {
       toast.error(result.error);
+      // Let them retry straight away when the email simply failed to send.
+      setCooldown(0);
     }
   };
 

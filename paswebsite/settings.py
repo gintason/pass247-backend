@@ -447,11 +447,23 @@ EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=20)
 # fresh checkout without credentials still runs - the mail prints to the
 # terminal instead of erroring. With EMAIL_HOST_PASSWORD set (as in .env),
 # real SMTP is used in every environment, including local development.
+#
+# Production (DEBUG=False) always uses a real backend: silently printing
+# signup codes to the log meant new users never received their OTP and no
+# error was reported anywhere.
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
-    default=("django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST_PASSWORD
+    default=("django.core.mail.backends.smtp.EmailBackend"
+             if (EMAIL_HOST_PASSWORD or not DEBUG)
              else "django.core.mail.backends.console.EmailBackend"),
 )
+
+# Optional HTTPS email API (Brevo). Use it where outbound SMTP ports are
+# blocked (e.g. Render free instances block 25/465/587):
+#   EMAIL_BACKEND=utils.email_backends.BrevoEmailBackend
+#   BREVO_API_KEY=<key from Brevo > SMTP & API > API keys>
+# The DEFAULT_FROM_EMAIL address must be a verified sender in Brevo.
+BREVO_API_KEY = env("BREVO_API_KEY", default="")
 
 # -------------------------------------------------
 # Celery (optional) - Disable for development if not needed
@@ -503,6 +515,9 @@ else:
 import sys as _sys
 if len(_sys.argv) > 1 and _sys.argv[1] == 'test':
     SECURE_SSL_REDIRECT = False
+    # The manifest storage needs `collectstatic` output; admin pages rendered
+    # in tests would otherwise fail with "Missing staticfiles manifest entry".
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
 # -------------------------------------------------
 # Django Debug Toolbar (optional - for development)

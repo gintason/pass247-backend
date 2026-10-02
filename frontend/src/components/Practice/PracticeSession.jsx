@@ -282,7 +282,7 @@ const PracticeSession = () => {
       if (isTrial && trialRemaining !== null && trialRemaining <= 0) {
         setUpgradeData({
           message: "You've completed all free questions. Upgrade to continue!",
-          upgrade_url: `/api/payments/create-payment/${bankId}/`
+          upgrade_url: '/payment-plans'
         });
         setShowUpgradePrompt(true);
         setLoading(false);
