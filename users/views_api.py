@@ -183,12 +183,18 @@ def api_register(request):
             profile.interest_area = exam_interest
             profile.save()
         
-        send_signup_otp(new_user)
+        email_sent = send_signup_otp(new_user)
 
         return JsonResponse({
             'success': True,
             'requires_verification': True,
-            'message': 'Account created. Enter the 6-digit code we emailed you to finish signing up.',
+            'email_sent': email_sent,
+            'message': (
+                'Account created. Enter the 6-digit code we emailed you to finish signing up.'
+                if email_sent else
+                "Account created, but we couldn't send your verification email just now. "
+                "Tap 'send a new code' on the next screen in a minute."
+            ),
             'email': new_user.email,
             'username': new_user.username,
         })
@@ -439,11 +445,13 @@ def api_reset_password(request, reset_id):
 
 def send_signup_otp(user):
     """
-    Issue a fresh signup OTP and email it.
+    Issue a fresh signup OTP and email it. Returns True if the email was
+    handed to the mail server/provider, False if sending failed.
 
     Email failures are logged, not raised: the account and code already
     exist, so failing the whole request would leave the user unable to
-    retry. They can use "resend code" instead.
+    retry. Callers report the failure so the user knows to use "resend code"
+    instead of waiting for an email that is never coming.
     """
     import logging
 
@@ -470,16 +478,17 @@ def send_signup_otp(user):
         # silence. Letting it raise here means the error is logged, while the
         # except still stops a mail failure from breaking signup.
         message.fail_silently = False
-        message.send()
+        sent = message.send() > 0
         logging.getLogger(__name__).info(
             f"Signup OTP email sent to user {user.pk} <{user.email}>"
         )
     except Exception as exc:
+        sent = False
         logging.getLogger(__name__).error(
             f"Signup OTP email FAILED for user {user.pk} <{user.email}>: "
             f"{type(exc).__name__}: {exc}"
         )
-    return otp
+    return sent
 
 
 def _resolve_user_for_verification(identifier):
@@ -562,8 +571,14 @@ def api_resend_email_otp(request):
 
     identifier = (data.get('email') or data.get('username') or '').strip()
     user = _resolve_user_for_verification(identifier)
-    if user is not None:
-        send_signup_otp(user)
+    if user is not None and not send_signup_otp(user):
+        # Only reachable for a real pending account; the student needs to
+        # know the email did not go out rather than wait for nothing.
+        return JsonResponse({
+            'success': False,
+            'email_sent': False,
+            'message': "We couldn't send the email right now. Please try again in a few minutes.",
+        }, status=503)
 
     return JsonResponse({
         'success': True,
