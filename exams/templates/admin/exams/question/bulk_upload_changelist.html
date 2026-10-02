@@ -2,15 +2,17 @@
 {% load i18n admin_urls %}
 
 {% block object-tools-items %}
+    {% if bulk_upload_url %}
     <li>
-        <a href="{% url 'admin:exams_question_bulk_upload' %}" class="addlink">
-            📤 Bulk Upload Questions
+        <a href="{{ bulk_upload_url }}" class="addlink">
+            📤 Bulk Upload {{ bulk_label|default:"Questions" }}
         </a>
     </li>
     <li>
-        <a href="{% url 'admin:exams_question_download_template' %}" class="viewsitelink">
+        <a href="{{ template_url }}" class="viewsitelink">
             📥 Download Template
         </a>
     </li>
+    {% endif %}
     {{ block.super }}
 {% endblock %}

@@ -31,6 +31,20 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = 'slug'
     filterset_fields = ['category']
     search_fields = ['name', 'description']
+
+    def get_object(self):
+        """
+        Look products up by slug, falling back to the numeric id: some links
+        (and old bookmarks) use /quiz/timed/<id>, which 404'd because only
+        slugs were accepted.
+        """
+        value = str(self.kwargs.get(self.lookup_field, ''))
+        if value.isdigit() and not self.get_queryset().filter(slug=value).exists():
+            product = self.get_queryset().filter(id=int(value)).first()
+            if product is not None:
+                self.check_object_permissions(self.request, product)
+                return product
+        return super().get_object()
     
     @action(detail=True, methods=['get'])
     def interviews(self, request, slug=None):

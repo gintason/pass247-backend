@@ -503,6 +503,9 @@ else:
 import sys as _sys
 if len(_sys.argv) > 1 and _sys.argv[1] == 'test':
     SECURE_SSL_REDIRECT = False
+    # The manifest storage needs `collectstatic` output; admin pages rendered
+    # in tests would otherwise fail with "Missing staticfiles manifest entry".
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
 # -------------------------------------------------
 # Django Debug Toolbar (optional - for development)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';

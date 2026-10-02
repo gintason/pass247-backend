@@ -41,7 +41,7 @@
 
 {% block content %}
 <div id="content-main" class="upload-container">
-    <h1>📤 Bulk Upload Questions</h1>
+    <h1>📤 Bulk Upload {{ bulk_label|default:"Questions" }}</h1>
     
     <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
         <h3 style="color: #1a1a1a;">Instructions:</h3>
@@ -53,9 +53,14 @@
             <li><strong>Optional:</strong> add <code>diagram_url</code> (image URL / file path) for questions with a figure</li>
             <li><strong>Optional:</strong> add <code>essay_paragraph</code> (or <code>comprehension_text</code>) for passage/essay questions</li>
             <li>Subject and Exam Category must already exist in the system</li>
+            {% if is_practice %}
+            <li><strong>Practice:</strong> rows without a <code>usage</code> column are saved as <em>Practice only</em>; use <code>practice_category</code> (or the box below) to group them into practice sets</li>
+            {% else %}
+            <li><strong>Optional:</strong> <code>usage</code> = EXAM (Main Exam only), PRACTICE or BOTH (blank = BOTH)</li>
+            {% endif %}
             <li>Upload the completed Excel or CSV file (blank optional cells are ignored)</li>
         </ol>
-        <a href="{% url 'admin:exams_question_download_template' %}" 
+        <a href="{{ template_url }}" 
            class="button" style="background: #28a745; color: white;">
             📥 Download Excel Template
         </a>
@@ -74,19 +79,30 @@
                    style="display: block; margin-top: 10px;">
         </div>
         
+        {% if is_practice %}
+        <div style="margin-bottom: 20px;">
+            <label for="practice_category" style="color: #1a1a1a;">
+                <strong>Practice set name (optional):</strong>
+            </label>
+            <input type="text" name="practice_category" id="practice_category" maxlength="200"
+                   placeholder="e.g. Number Bases - used for rows without a practice_category"
+                   style="display: block; margin-top: 10px; width: 100%; max-width: 480px;">
+        </div>
+        {% else %}
         <div style="margin-bottom: 20px;">
             <label style="color: #333333;">
                 <input type="checkbox" name="create_question_banks" checked>
                 <strong>Automatically create question banks from uploaded questions</strong>
             </label>
         </div>
+        {% endif %}
         
         <div style="margin-top: 20px;">
             <button type="submit" class="button" 
                     style="background: #007bff; color: white; padding: 10px 20px; font-size: 16px;">
                 🚀 Upload Questions
             </button>
-            <a href="{% url 'admin:exams_question_changelist' %}" 
+            <a href="{{ changelist_url }}" 
                class="button" style="background: #6c757d; color: white; padding: 10px 20px;">
                 Cancel
             </a>

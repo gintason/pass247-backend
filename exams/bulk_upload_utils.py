@@ -163,12 +163,18 @@ def process_excel_upload(file_path, user, options=None):
             # BOTH (blank = BOTH), `practice_category` = practice set name,
             # created for this exam category + subject if it does not exist.
             usage = cell(row, df, 'usage', 'question_usage')
+            if usage is None and options and options.get('default_usage'):
+                # Practice Questions > Bulk upload: rows without a usage
+                # column default to Practice.
+                usage = options['default_usage']
             if usage is not None:
                 usage = str(usage).strip().upper().replace('MAIN EXAM', 'EXAM').replace('MAIN_EXAM', 'EXAM')
                 if usage not in dict(Question.USAGE_CHOICES):
                     raise ValueError(f"usage must be PRACTICE, EXAM or BOTH (got '{usage}')")
                 question_data['usage'] = usage
             practice_set = cell(row, df, 'practice_category', 'practice_set')
+            if practice_set is None and options and options.get('default_practice_category'):
+                practice_set = options['default_practice_category']
             if practice_set is not None:
                 question_data['practice_category'], _ = PracticeCategory.objects.get_or_create(
                     exam_category=exam_category, subject=subject, name=str(practice_set).strip()[:200])
@@ -429,9 +435,12 @@ def auto_create_question_banks(question_ids=None, grouping_strategy='auto'):
     return created_banks
 
 
-def generate_bulk_upload_template():
+def generate_bulk_upload_template(mode='exam'):
     """
-    Generate a sample Excel template for bulk upload
+    Generate a sample Excel template for bulk upload.
+
+    mode='exam'     - Exam Questions (usage defaults to BOTH)
+    mode='practice' - Practice Questions (usage PRACTICE + practice_category)
     """
     sample_data = {
         'question_text': [
@@ -477,5 +486,9 @@ def generate_bulk_upload_template():
         ],
     }
     
+    if mode == 'practice':
+        sample_data['usage'] = ['PRACTICE', 'PRACTICE', 'PRACTICE']
+        sample_data['practice_category'] = ['Civic Education', 'Photosynthesis', 'Linear Equations']
+
     df = pd.DataFrame(sample_data)
     return df

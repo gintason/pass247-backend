@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import react from 'eslint-plugin-react'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
@@ -22,8 +23,15 @@ export default defineConfig([
         sourceType: 'module',
       },
     },
+    plugins: { react },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Count <motion.div> etc. as a use of `motion`. Without this the
+      // framer-motion import was reported as unused, got deleted, and the
+      // quiz pages crashed with "motion is not defined".
+      'react/jsx-uses-vars': 'error',
+      // A component used without being imported crashes the page at runtime.
+      'react/jsx-no-undef': 'error',
     },
   },
 ])
