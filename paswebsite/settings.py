@@ -496,6 +496,14 @@ else:
     SESSION_COOKIE_SAMESITE = 'None'
     CSRF_COOKIE_SAMESITE = 'None'
 
+# `manage.py test` uses Django's plain-HTTP test client. With DEBUG=False
+# (e.g. running the suite in the Render shell) SECURE_SSL_REDIRECT would turn
+# every test request into a 301 to https://, so no view is ever reached.
+# Only the test runner is affected; the live site keeps the HTTPS redirect.
+import sys as _sys
+if len(_sys.argv) > 1 and _sys.argv[1] == 'test':
+    SECURE_SSL_REDIRECT = False
+
 # -------------------------------------------------
 # Django Debug Toolbar (optional - for development)
 # -------------------------------------------------
