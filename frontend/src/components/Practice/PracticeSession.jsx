@@ -6,290 +6,16 @@ import ProgressBar from './ProgressBar';
 import SessionSummary from './SessionSummary';
 import api, { fetchCSRFToken } from '../../api/client';
 import StudyNotesViewer from './StudyNotesViewer';
+import PastQuestions from './PastQuestions';
+import UpgradeCTA from './UpgradeCTA';
 
-// ============================================================
-// PAST QUESTIONS COMPONENT
-// ============================================================
-const PastQuestions = ({ subjectName, subjectId, examCategory }) => {
-  // Derived at render time — avoids setState-in-effect for the "no id" case.
-  const invalidId =
-    !subjectId || subjectId === 'null' || subjectId === 'undefined';
-
-  const [pastQuestions, setPastQuestions] = useState(null);
-  // Initial state already reflects invalidId, so no effect-based setState needed.
-  const [loading, setLoading] = useState(!invalidId);
-  const [error, setError] = useState(
-    invalidId ? 'Subject ID not available' : null
-  );
-  const [selectedYear, setSelectedYear] = useState('all');
-  const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [feedbackByQuestion, setFeedbackByQuestion] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
-  const questionsPerPage = 10;
-
-  // Declared BEFORE the effect that references it (fixes TDZ error).
-  //
-  // The leading `await Promise.resolve()` guarantees an await has run on
-  // EVERY path from function entry before any setState becomes reachable.
-  // Without it, a synchronous throw from `api.get(...)` would reach the
-  // catch block before any await, and react-hooks/set-state-in-effect
-  // correctly flags those catch-block setState calls.
-  const fetchPastQuestions = async () => {
-    await Promise.resolve();
-    try {
-      const response = await api.get(
-        `/api/exams/past-questions/${subjectId}/`,
-        { params: { exam_category: examCategory || '' } }
-      );
-      setPastQuestions(response.data);
-      setError(null);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching past questions:', err);
-      setError('Failed to load past questions');
-      setLoading(false);
-    }
-  };
-
- useEffect(() => {
-    if (invalidId) return;   // initial state already reflects this
-    // react-hooks/set-state-in-effect false-positives on async loaders:
-    // the analyzer does not trace through the async-function boundary, so
-    // it does not see that `await Promise.resolve()` inside
-    // fetchPastQuestions makes every setState asynchronous. See
-    // https://github.com/facebook/react/issues/34905.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPastQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invalidId, subjectId, examCategory]);
-
-
-  const handleSelectAnswer = (questionId, letter) => {
-    setSelectedAnswers(prev => ({ ...prev, [questionId]: letter }));
-  };
-
-  const handleCheckAnswer = (question) => {
-    const chosen = selectedAnswers[question.id];
-    if (!chosen) return;
-
-    const isCorrect = question.correct_answer?.toUpperCase() === chosen.toUpperCase();
-    setFeedbackByQuestion(prev => ({
-      ...prev,
-      [question.id]: {
-        is_correct: isCorrect,
-        correct_answer: question.correct_answer,
-        explanation: question.explanation,
-        question_id: question.id
-      }
-    }));
-  };
-
-  const handleYearChange = (year) => {
-    setSelectedYear(year);
-    setCurrentPage(1);
-  };
-
-  const getFilteredQuestions = () => {
-    if (!pastQuestions?.questions) return [];
-
-    if (selectedYear === 'all') {
-      return pastQuestions.questions;
-    }
-    return pastQuestions.questions.filter(q =>
-      q.exam_year === parseInt(selectedYear) || q.year === parseInt(selectedYear)
-    );
-  };
-
-  const getAvailableYears = () => {
-    if (!pastQuestions?.questions) return [];
-    const years = new Set();
-    pastQuestions.questions.forEach(q => {
-      const year = q.exam_year || q.year;
-      if (year) years.add(year);
-    });
-    return Array.from(years).sort((a, b) => b - a);
-  };
-
-  const getPaginatedQuestions = () => {
-    const filtered = getFilteredQuestions();
-    const startIndex = (currentPage - 1) * questionsPerPage;
-    return filtered.slice(startIndex, startIndex + questionsPerPage);
-  };
-
-  const getTotalPages = () => {
-    return Math.ceil(getFilteredQuestions().length / questionsPerPage);
-  };
-
-  if (loading) {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-purple" role="status" style={{ color: '#6f42c1' }}>
-          <span className="visually-hidden">Loading...</span>
-        </div>
-        <p className="mt-2 text-muted">Loading past questions for {subjectName || 'this subject'}...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-5">
-        <i className="fas fa-history fa-3x text-muted mb-3"></i>
-        <h5>Past Questions Unavailable</h5>
-        <p className="text-muted">
-          {subjectId && subjectId !== 'null' && subjectId !== 'undefined'
-            ? `Past questions for ${subjectName || 'this subject'} are not yet available.`
-            : 'Please access this section from a valid subject page.'}
-        </p>
-        {subjectId && subjectId !== 'null' && subjectId !== 'undefined' && (
-          <button className="btn btn-outline-purple btn-sm mt-2"
-            style={{ color: '#6f42c1', borderColor: '#6f42c1' }}
-            onClick={fetchPastQuestions}>
-            <i className="fas fa-redo me-1"></i> Retry
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (!pastQuestions?.questions || pastQuestions.questions.length === 0) {
-    return (
-      <div className="text-center py-5">
-        <i className="fas fa-history fa-3x text-muted mb-3"></i>
-        <h5>No Past Questions Available</h5>
-        <p className="text-muted">Past questions for {subjectName || 'this subject'} are not yet available.</p>
-      </div>
-    );
-  }
-
-  const filteredQuestions = getPaginatedQuestions();
-  const totalPages = getTotalPages();
-  const availableYears = getAvailableYears();
-
-  return (
-    <div className="past-questions-container">
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-        <h5 className="mb-0" style={{ color: '#4b2e83' }}>
-          <i className="fas fa-history me-2"></i>
-          {getFilteredQuestions().length} Past Question{getFilteredQuestions().length !== 1 ? 's' : ''}
-          {subjectName ? ` — ${subjectName}` : ''}
-        </h5>
-
-        {availableYears.length > 0 && (
-          <select
-            className="form-select form-select-sm"
-            style={{ width: 'auto', borderColor: '#6f42c1' }}
-            value={selectedYear}
-            onChange={(e) => handleYearChange(e.target.value)}
-          >
-            <option value="all">All Years</option>
-            {availableYears.map(year => (
-              <option key={year} value={year}>{year}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {filteredQuestions.map((question, idx) => {
-        const chosen = selectedAnswers[question.id];
-        const fb = feedbackByQuestion[question.id];
-        const options = [
-          ['A', question.option_a],
-          ['B', question.option_b],
-          ['C', question.option_c],
-          ['D', question.option_d],
-          ['E', question.option_e],
-        ].filter(([, text]) => text);
-
-        return (
-          <div key={question.id} className="card border-0 shadow-sm mb-3 rounded-3">
-            <div className="card-body">
-              <div className="d-flex justify-content-between align-items-start mb-2">
-                <span className="badge rounded-pill" style={{ backgroundColor: '#ede9fe', color: '#6f42c1' }}>
-                  Question {(currentPage - 1) * questionsPerPage + idx + 1}
-                </span>
-                {(question.exam_year || question.year) && (
-                  <span className="text-muted small">{question.exam_year || question.year}</span>
-                )}
-              </div>
-
-              <p className="fw-semibold mb-3">{question.question_text}</p>
-
-              <div className="d-flex flex-column gap-2 mb-3">
-                {options.map(([letter, text]) => {
-                  const isSelected = chosen === letter;
-                  const isRevealedCorrect = fb && letter === fb.correct_answer;
-                  const isRevealedWrong = fb && isSelected && !fb.is_correct;
-
-                  let btnClass = 'btn text-start ';
-                  if (isRevealedCorrect) btnClass += 'btn-success';
-                  else if (isRevealedWrong) btnClass += 'btn-outline-danger';
-                  else if (isSelected) btnClass += 'btn-outline-purple';
-                  else btnClass += 'btn-outline-secondary';
-
-                  return (
-                    <button
-                      key={letter}
-                      type="button"
-                      className={btnClass}
-                      style={isSelected && !fb ? { borderColor: '#6f42c1', color: '#6f42c1' } : {}}
-                      disabled={!!fb}
-                      onClick={() => handleSelectAnswer(question.id, letter)}
-                    >
-                      <strong>{letter}.</strong> {text}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {!fb ? (
-                <button
-                  className="btn btn-sm"
-                  style={{ backgroundColor: '#6f42c1', color: '#fff' }}
-                  disabled={!chosen}
-                  onClick={() => handleCheckAnswer(question)}
-                >
-                  Check Answer
-                </button>
-              ) : (
-                <div className={`alert ${fb.is_correct ? 'alert-success' : 'alert-danger'} mb-0`}>
-                  <strong>{fb.is_correct ? 'Correct!' : 'Not quite.'}</strong>
-                  {!fb.is_correct && <> The correct answer is <strong>{fb.correct_answer}</strong>.</>}
-                  {question.explanation && (
-                    <p className="mb-0 mt-2 small">{question.explanation}</p>
-                  )}
-                </div>
-              )}
-
-              {question.reference && (
-                <p className="text-muted small mt-2 mb-0">Source: {question.reference}</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {totalPages > 1 && (
-        <div className="d-flex justify-content-center align-items-center gap-3 mt-3">
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-          >
-            <i className="fas fa-chevron-left"></i> Previous
-          </button>
-          <span className="text-muted small">Page {currentPage} of {totalPages}</span>
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-          >
-            Next <i className="fas fa-chevron-right"></i>
-          </button>
-        </div>
-      )}
-    </div>
-  );
+const formatClock = (seconds) => {
+  const s = Math.max(0, seconds || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 };
 
 // ============================================================
@@ -305,6 +31,8 @@ const PracticeSession = () => {
   const subjectName = searchParams.get('subject');
   const subjectId = searchParams.get('subject_id');
   const examCategory = searchParams.get('exam_category');
+  // 'practice' (free Practice Portal) | 'exam' (timed Main Exam) | null (legacy)
+  const modeParam = searchParams.get('mode');
 
   const [activeTab, setActiveTab] = useState('practice');
   const [session, setSession] = useState(null);
@@ -325,6 +53,15 @@ const PracticeSession = () => {
   // Tracks which question indices have been answered, to style the
   // full-access question navigator (subscribed users only).
   const [answeredIndices, setAnsweredIndices] = useState(() => new Set());
+  const [errorCode, setErrorCode] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [mainExamUnlocked, setMainExamUnlocked] = useState(true);
+
+  const sessionType = session?.session_type || (modeParam === 'exam' ? 'EXAM' : 'PRACTICE');
+  const isExamMode = sessionType === 'EXAM';
+  const isPortalPractice = modeParam === 'practice' || session?.bank_type === 'PRACTICE';
+  const portalUrl = `/practice-portal/${examCategory || session?.exam_category || ''}`
+    + (subjectId ? `?subject=${subjectId}` : '');
 
   // ============================================================
   // FUNCTIONS DECLARED BEFORE EFFECTS
@@ -350,15 +87,21 @@ const PracticeSession = () => {
 
       if (questionResponse.data.session) {
         setSession(questionResponse.data.session);
+        const remaining = questionResponse.data.session.time_remaining_seconds;
+        setTimeLeft(typeof remaining === 'number' ? remaining : null);
       }
 
       setLoading(false);
     } catch (err) {
       console.error('Error loading session:', err.response || err);
+      const code = err.response?.data?.code;
 
-      if (err.response?.status === 400 && err.response?.data?.error === 'Session already completed') {
+      if (code === 'session_completed' || code === 'session_finished'
+        || (err.response?.status === 400 && err.response?.data?.error === 'Session already completed')) {
         fetchSessionSummary();
       } else {
+        // session_not_found / no_questions get a friendly screen (see render)
+        setErrorCode(code || null);
         setError(err.response?.data?.error || 'Error loading session');
         setLoading(false);
       }
@@ -502,6 +245,31 @@ const PracticeSession = () => {
     }
   };
 
+  // Main Exam: record the answer and move on - no answer reveal until the end.
+  const handleSaveExamAnswer = async () => {
+    if (!selectedAnswer) return;
+    try {
+      setChecking(true);
+      setError(null);
+      await api.post(`/api/exams/sessions/${sessionId}/check_answer/`, {
+        question_id: currentQuestion.id,
+        selected_answer: selectedAnswer,
+        time_spent_seconds: 30,
+      });
+      setAnsweredIndices(prev => new Set(prev).add(questionIndex));
+      setChecking(false);
+      await handleNextQuestion();
+    } catch (err) {
+      console.error('Error saving exam answer:', err.response || err);
+      setChecking(false);
+      if (err.response?.data?.code === 'time_up') {
+        await fetchSessionSummary();
+      } else {
+        setError(err.response?.data?.error || 'Could not save your answer');
+      }
+    }
+  };
+
   const handleNextQuestion = async () => {
     if (showUpgradePrompt) {
       navigate(`/payment-plans?bank_id=${bankId}&subject=${encodeURIComponent(subjectName || '')}`);
@@ -635,6 +403,30 @@ const PracticeSession = () => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Main Exam countdown; auto-submits when time runs out.
+  useEffect(() => {
+    if (!isExamMode || timeLeft === null || sessionCompleted) return undefined;
+    if (timeLeft <= 0) {
+      fetchSessionSummary();
+      return undefined;
+    }
+    const timer = setTimeout(() => setTimeLeft(t => (t === null ? t : t - 1)), 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExamMode, timeLeft, sessionCompleted]);
+
+  // Whether to show the "Unlock Main Exam Mode" prompts.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/api/exams/portal/access/');
+        if (!cancelled) setMainExamUnlocked(!!res.data.main_exam_unlocked);
+      } catch { /* keep prompts hidden on failure */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
       if (activeTab === 'practice') {
         // Same false positive as in PastQuestions above.
@@ -699,26 +491,43 @@ const PracticeSession = () => {
 
   if (sessionCompleted && activeTab === 'practice') {
     return (
-      <SessionSummary
-        summary={sessionSummary}
-        onReview={handleReviewWrongAnswers}
-        onNewPractice={() => navigate('/dashboard')}
-        isTrial={isTrial}
-      />
+      <>
+        <SessionSummary
+          summary={sessionSummary}
+          onReview={handleReviewWrongAnswers}
+          onNewPractice={() => navigate(isPortalPractice || isExamMode ? portalUrl : '/dashboard')}
+          isTrial={isTrial}
+        />
+        {!isExamMode && !mainExamUnlocked && (
+          <div className="container pb-5" style={{ maxWidth: 900 }}>
+            <UpgradeCTA
+              title="Great practice! Now try it under exam conditions"
+              message="Unlock Main Exam Mode for timed papers by year, exam-standard scoring and full results. Practice and study notes stay free."
+            />
+          </div>
+        )}
+      </>
     );
   }
 
   if (error && activeTab === 'practice') {
+    const dead = errorCode === 'session_not_found' || errorCode === 'no_questions';
     return (
       <div className="container mt-5" style={{ minHeight: '70vh' }}>
-        <div className="alert alert-danger">
+        <div className={`alert ${dead ? 'alert-warning' : 'alert-danger'}`}>
           <i className="fas fa-exclamation-triangle me-2"></i>
           {error}
         </div>
-        <div className="d-flex gap-2">
-          <button className="btn btn-primary" onClick={() => { setError(null); fetchSessionData(); }}>
-            <i className="fas fa-redo me-2"></i> Try Again
-          </button>
+        <div className="d-flex flex-wrap gap-2">
+          {dead ? (
+            <button className="btn btn-primary" onClick={() => navigate(portalUrl)}>
+              <i className="fas fa-th-large me-2"></i> Go to Practice Portal
+            </button>
+          ) : (
+            <button className="btn btn-primary" onClick={() => { setError(null); setErrorCode(null); fetchSessionData(); }}>
+              <i className="fas fa-redo me-2"></i> Try Again
+            </button>
+          )}
           <button className="btn btn-outline-secondary" onClick={() => navigate('/dashboard')}>
             <i className="fas fa-home me-2"></i> Go to Dashboard
           </button>
@@ -749,9 +558,33 @@ const PracticeSession = () => {
           <div className="text-center mb-4">
             <h3 className="text-primary fw-bold">
               <i className="fas fa-graduation-cap me-2"></i>
-              {subjectName || 'Practice Session'}
+              {subjectName || session?.subject_name || 'Practice Session'}
             </h3>
+            <div className="d-flex justify-content-center flex-wrap gap-2 mt-2">
+              {isExamMode ? (
+                <span className="badge rounded-pill text-bg-dark px-3 py-2">
+                  <i className="fas fa-stopwatch me-1"></i> Main Exam Mode
+                </span>
+              ) : (
+                <span className="badge rounded-pill text-bg-success px-3 py-2">
+                  <i className="fas fa-unlock me-1"></i> Practice Mode · instant feedback
+                </span>
+              )}
+              {isExamMode && timeLeft !== null && (
+                <span className={`badge rounded-pill px-3 py-2 ${timeLeft < 300 ? 'text-bg-danger' : 'text-bg-light'}`}
+                  style={{ fontFamily: 'var(--pas-font-data, monospace)', fontSize: '0.95rem' }}
+                  aria-live="polite">
+                  <i className="fas fa-clock me-1"></i>{formatClock(timeLeft)} left
+                </span>
+              )}
+            </div>
           </div>
+
+          {!isExamMode && !isTrial && !mainExamUnlocked && activeTab === 'practice' && (
+            <div className="mb-4">
+              <UpgradeCTA variant="banner" title="Practising well? Unlock timed Main Exam Mode" />
+            </div>
+          )}
 
           {activeTab === 'practice' && !sessionCompleted && (
             <ProgressBar current={questionIndex + 1} total={isTrial ? 5 : totalQuestions} />
@@ -798,6 +631,7 @@ const PracticeSession = () => {
 
           <div className="card shadow-sm border-0 mb-4">
             <div className="card-body p-0">
+              {!isExamMode && (
               <div style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 borderRadius: '16px',
@@ -913,6 +747,7 @@ const PracticeSession = () => {
                   </button>
                 </div>
               </div>
+              )}
 
               <div className="p-4">
                 {activeTab === 'practice' && (
@@ -926,7 +761,23 @@ const PracticeSession = () => {
                       disabled={showFeedback}
                     />
 
-                    {!showFeedback ? (
+                    {isExamMode ? (
+                      <div className="d-flex justify-content-between mt-4">
+                        <button className="btn btn-outline-secondary" onClick={handleSkipQuestion} disabled={loading || checking}>
+                          Skip
+                        </button>
+                        <div className="d-flex gap-2">
+                          <button className="btn btn-outline-danger" disabled={loading || checking}
+                            onClick={() => { if (window.confirm('Submit the exam now? Unanswered questions will be marked as not answered.')) fetchSessionSummary(); }}>
+                            Submit Exam
+                          </button>
+                          <button className="btn btn-dark" onClick={handleSaveExamAnswer} disabled={!selectedAnswer || loading || checking}>
+                            {checking ? 'Saving…' : (questionIndex + 1 < totalQuestions ? 'Save & Next' : 'Save & Finish')}
+                            <i className="fas fa-arrow-right ms-2"></i>
+                          </button>
+                        </div>
+                      </div>
+                    ) : !showFeedback ? (
                       <div className="d-flex justify-content-between mt-4">
                         <button className="btn btn-outline-secondary" onClick={handleSkipQuestion} disabled={loading || checking}>
                           Skip Question

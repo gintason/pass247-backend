@@ -6,6 +6,36 @@ import FreeTrialBanner from './FreeTrialBanner';
 import UpgradePrompt from './UpgradePrompt';
 import slider1 from '../../assets/slider1.png';
 
+/**
+ * Exam Year Picker for the Main Exam entry on each exam card. Years come from
+ * /api/exams/exam-years/ (admin ExamYear rows + years used by questions);
+ * falls back to the last six years if the API has none yet.
+ */
+const FALLBACK_YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
+
+const ExamYearSelect = ({ examType, value, onChange }) => {
+  const [years, setYears] = useState(FALLBACK_YEARS);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/api/exams/exam-years/', { params: { exam_category: examType } })
+      .then((res) => {
+        const list = (res.data.years || []).map((y) => y.year);
+        if (!cancelled && list.length) setYears(list);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [examType]);
+
+  return (
+    <select className="form-select form-select-sm exam-year-select" value={value}
+      aria-label="Select exam year" onChange={(e) => onChange(e.target.value)}>
+      <option value="">Select year</option>
+      {years.map((y) => <option key={y} value={y}>{y}</option>)}
+    </select>
+  );
+};
+
 const Exams = () => {
   const navigate = useNavigate();
   const [trialStatus, setTrialStatus] = useState({});
@@ -14,6 +44,7 @@ const Exams = () => {
   const [loading, setLoading] = useState(true);
   const [subjects, setSubjects] = useState([]);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [examYears, setExamYears] = useState({});
 
   useEffect(() => {
     fetchTrialStatus();
@@ -225,6 +256,24 @@ const Exams = () => {
         .btn-start:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-start:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(68,0,255,0.3); gap: 1rem; }
 
+        .exam-modes { display: grid; gap: 0.6rem; margin-bottom: 1rem; }
+        .btn-portal {
+          display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; text-align: left;
+          padding: 0.7rem 1rem; border-radius: 14px; border: 2px solid #e9e4ff; background: #f6f3ff;
+          color: #2b00a3; font-weight: 700; cursor: pointer; transition: var(--transition);
+        }
+        .btn-portal:hover { border-color: #4400ff; transform: translateY(-2px); }
+        .btn-portal .mode-note { flex-basis: 100%; font-weight: 500; font-size: 0.78rem; color: #6c757d; }
+        .main-exam-row {
+          display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.75rem;
+          border-radius: 14px; border: 2px solid #1a1a1a; background: #fff;
+        }
+        .main-exam-label { font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
+        .exam-year-select { flex: 1; min-width: 0; }
+        .btn-main-exam {
+          border: none; border-radius: 10px; padding: 0.35rem 0.8rem; background: #1a1a1a; color: #fff;
+          font-weight: 700; font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+        }
         .btn-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 0.6s linear infinite; margin-right: 8px; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -306,6 +355,24 @@ const Exams = () => {
                         {creatingSession ? <><span className="btn-spinner"></span> Loading...</> : <>{subject}{renderTrialBadge(subject)}</>}
                       </button>
                     ))}
+                  </div>
+                  <div className="exam-modes">
+                    <button type="button" className="btn-portal" onClick={() => navigate(`/practice-portal/${exam.id}`)}>
+                      <i className="fas fa-th-large"></i> Practice Portal
+                      <span className="mode-note">Notes · Syllabus · Past questions · Free practice</span>
+                    </button>
+                    <div className="main-exam-row">
+                      <span className="main-exam-label"><i className="fas fa-stopwatch"></i> Main Exam</span>
+                      <ExamYearSelect examType={exam.id} value={examYears[exam.id] || ''}
+                        onChange={(y) => setExamYears((prev) => ({ ...prev, [exam.id]: y }))} />
+                      <button type="button" className="btn-main-exam"
+                        onClick={() => {
+                          const y = examYears[exam.id];
+                          navigate(`/practice-portal/${exam.id}?tab=main-exam${y ? `&year=${y}` : ''}`);
+                        }}>
+                        Go <i className="fas fa-arrow-right"></i>
+                      </button>
+                    </div>
                   </div>
                   <button className="btn-start" onClick={() => handleExamCardStart(exam.id)} disabled={creatingSession}>
                     {creatingSession ? <><span className="btn-spinner"></span> Loading...</> : <>Start <i className="fas fa-arrow-right"></i></>}

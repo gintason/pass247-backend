@@ -270,3 +270,52 @@ class PastQuestionSerializer(serializers.ModelSerializer):
             'difficulty', 'subject_name', 'exam_category_name', 'exam_year_display',
             'exam_year', 'year', 'reference'
         ]
+
+class ExamSyllabusSerializer(serializers.ModelSerializer):
+    """Syllabus list item for the Practice Portal picker (no long content)."""
+    exam_category_name = serializers.CharField(source='exam_category.display_name', read_only=True)
+    exam_category_slug = serializers.SerializerMethodField()
+    subject_name = serializers.CharField(source='subject.name', read_only=True, default=None)
+    file_url = serializers.SerializerMethodField()
+    file_name = serializers.SerializerMethodField()
+    file_type = serializers.SerializerMethodField()
+    has_content = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamSyllabus
+        fields = [
+            'id', 'title', 'description', 'edition', 'exam_category', 'exam_category_name',
+            'exam_category_slug', 'subject', 'subject_name', 'file_url', 'file_name',
+            'file_type', 'external_url', 'has_content', 'updated_at',
+        ]
+
+    def get_exam_category_slug(self, obj):
+        from .category_utils import category_slug
+        return category_slug(obj.exam_category)
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        try:
+            url = obj.file.url
+        except Exception:
+            return None
+        request = self.context.get('request')
+        if request and url.startswith('/'):
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_file_name(self, obj):
+        import os
+        return os.path.basename(obj.file.name) if obj.file else None
+
+    def get_file_type(self, obj):
+        return obj.file_extension.lstrip('.') or None
+
+    def get_has_content(self, obj):
+        return bool(obj.content and obj.content.strip())
+
+
+class ExamSyllabusDetailSerializer(ExamSyllabusSerializer):
+    class Meta(ExamSyllabusSerializer.Meta):
+        fields = ExamSyllabusSerializer.Meta.fields + ['content']

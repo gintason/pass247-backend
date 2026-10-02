@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     
-    <!-- Try all these favicon formats -->
-    <link rel="icon" type="image/png" href="/assets/logo1.png" />
-    <link rel="icon" type="image/png" href="./assets/logo1.png" />
-    <link rel="shortcut icon" href="/assets/logo1.png" />
-    
-    <!-- Apple devices -->
-    <link rel="apple-touch-icon" href="/assets/logo1.png" />
+    <!-- Favicon lives in public/ so it is served as-is at the site root.
+         Always use a ROOT path ("/logo1.png"): a relative "./assets/..." is
+         resolved against the current page, so on /practice/jssce it became
+         /practice/jssce/assets/logo1.png (404). -->
+    <link rel="icon" type="image/png" href="/logo1.png" />
+    <link rel="shortcut icon" href="/logo1.png" />
+    <link rel="apple-touch-icon" href="/logo1.png" />
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 

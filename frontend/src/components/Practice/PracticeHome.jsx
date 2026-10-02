@@ -227,13 +227,18 @@ const PracticeHome = () => {
       return;
     }
 
+    // An empty bank produces a session with nothing to load (the old
+    // "current_question 404"), so subjects without questions are not started.
+    if (!subject.question_count) {
+      alert(`${subject.name} has no questions yet. Please choose another subject.`);
+      return;
+    }
+
     try {
       setCreatingSession(true);
 
-      const csrfToken = await fetchCSRFToken();
-      if (csrfToken) {
-        api.defaults.headers.common['X-CSRFToken'] = csrfToken;
-      }
+      // The api client's request interceptor attaches X-CSRFToken.
+      await fetchCSRFToken();
 
       const response = await api.post('/api/exams/sessions/', {
         question_bank: subject.bank_id,
@@ -265,6 +270,7 @@ const PracticeHome = () => {
         navigate('/payment-plans');
       } else {
         const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to start practice session';
+        // no_questions / bank_not_found come back with a readable message.
         alert(`Error: ${errorMessage}`);
       }
     } finally {
@@ -498,6 +504,17 @@ const PracticeHome = () => {
         <p style={{ color: '#6b7280', fontSize: '1.1rem' }}>
           Select a subject to start practicing. Track your progress and improve your skills.
         </p>
+        <button
+          type="button"
+          onClick={() => navigate(`/practice-portal/${examType}`)}
+          style={{
+            background: 'linear-gradient(135deg, #4400ff, #7c3aed)', color: '#fff', border: 'none',
+            padding: '0.55rem 1.25rem', borderRadius: '25px', fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          <i className="fas fa-th-large me-2"></i>
+          Open the Practice Portal — notes, syllabus, past questions & free practice
+        </button>
       </div>
 
       {isTrial && (
@@ -559,10 +576,13 @@ const PracticeHome = () => {
             return (
               <div
                 key={index}
-                className={`subject-card ${creatingSession ? 'disabled' : ''}`}
+                className={`subject-card ${creatingSession || !total ? 'disabled' : ''}`}
                 onClick={() => handleStartPractice(subject)}
+                title={!total ? 'Questions coming soon' : undefined}
               >
-                {subject.is_subscribed ? (
+                {!total ? (
+                  <div className="trial-badge locked">Coming soon</div>
+                ) : subject.is_subscribed ? (
                   <div className="trial-badge subscribed">
                     <i className="fas fa-check-circle me-1"></i> Subscribed
                   </div>

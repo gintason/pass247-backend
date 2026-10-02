@@ -396,6 +396,28 @@ const ReferencesBlock = ({ references }) => {
   );
 };
 
+/* ------------------------------------------------------------------
+   Reusable renderer for any admin-authored Markdown (syllabuses etc.):
+   same colour-coded panels, tables and maths as the study notes.
+   ------------------------------------------------------------------ */
+export const MarkdownContent = ({ content }) => {
+  const rendered = useMemo(() => normalizeMathDelimiters(content || ''), [content]);
+  if (!rendered.trim()) return null;
+  return (
+    <div className="sn-doc">
+      <div className="sn-content">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath, remarkCallouts, remarkHeadings]}
+          rehypePlugins={[rehypeKatex]}
+          components={markdownComponents}
+        >
+          {rendered}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+};
+
 /* ==================================================================
    Main viewer
    ================================================================== */

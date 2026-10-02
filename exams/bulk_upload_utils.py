@@ -3,7 +3,7 @@ import pandas as pd
 from django.db import transaction
 from django.db.models import Q
 from .models import (
-    ExamCategory, Subject, ExamYear, Question, QuestionBank
+    ExamCategory, Subject, ExamYear, Question, QuestionBank, PracticeCategory
 )
 
 
@@ -158,6 +158,20 @@ def process_excel_upload(file_path, user, options=None):
             essay = cell(row, df, 'essay_paragraph', 'comprehension_text')
             if essay is not None:
                 question_data['essay_paragraph'] = essay
+
+            # Practice vs Main Exam (optional): `usage` = PRACTICE / EXAM /
+            # BOTH (blank = BOTH), `practice_category` = practice set name,
+            # created for this exam category + subject if it does not exist.
+            usage = cell(row, df, 'usage', 'question_usage')
+            if usage is not None:
+                usage = str(usage).strip().upper().replace('MAIN EXAM', 'EXAM').replace('MAIN_EXAM', 'EXAM')
+                if usage not in dict(Question.USAGE_CHOICES):
+                    raise ValueError(f"usage must be PRACTICE, EXAM or BOTH (got '{usage}')")
+                question_data['usage'] = usage
+            practice_set = cell(row, df, 'practice_category', 'practice_set')
+            if practice_set is not None:
+                question_data['practice_category'], _ = PracticeCategory.objects.get_or_create(
+                    exam_category=exam_category, subject=subject, name=str(practice_set).strip()[:200])
             
             # Add options for objective questions
             if question_type == 'OBJECTIVE':
@@ -451,6 +465,10 @@ def generate_bulk_upload_template():
             '',
             'questions/images/triangle.png'
         ],
+        # Optional: PRACTICE (free practice), EXAM (timed main exam) or BOTH.
+        'usage': ['BOTH', 'EXAM', 'PRACTICE'],
+        # Optional practice set / topic (created automatically).
+        'practice_category': ['', '', 'Linear Equations'],
         'essay_paragraph': [
             '',
             'Read the passage below and answer the question that follows. '

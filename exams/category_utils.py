@@ -77,3 +77,22 @@ def resolve_exam_category(identifier):
         ExamCategory.objects.filter(name__iexact=value).first()
         or ExamCategory.objects.filter(display_name__iexact=value).first()
     )
+
+
+# ExamCategory.name -> the canonical URL slug the React app uses.
+NAME_TO_SLUG = {
+    'JSS': 'jssce',
+    'WASSCE': 'waec',
+    'UTME': 'jamb',
+    'POST_UTME': 'post-utme',
+    'APTITUDE': 'aptitude',
+    'PROMOTION': 'promotion',
+    'CIVIL': 'civil',
+}
+
+
+def category_slug(category):
+    """URL slug for an ExamCategory instance (falls back to its lowercased name)."""
+    if category is None:
+        return None
+    return NAME_TO_SLUG.get(category.name, category.name.lower().replace('_', '-'))

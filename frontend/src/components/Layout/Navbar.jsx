@@ -82,6 +82,7 @@ const Navbar = () => {
     { path: '/', label: 'Home', icon: 'bi-house-door-fill' },
     { path: '/about', label: 'About', icon: 'bi-info-circle-fill' },
     { path: '/exams', label: 'Exams', icon: 'bi-journal-bookmark-fill' },
+    { path: '/practice-portal', label: 'Practice', icon: 'bi-pencil-square' },
     { path: '/careers', label: 'Careers', icon: 'bi-briefcase-fill' },
     { path: '/skills', label: 'Skills', icon: 'bi-palette-fill' },
     { path: '/payment-plans', label: 'Pricing', icon: 'bi-star-fill' },
