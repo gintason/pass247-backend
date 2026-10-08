@@ -25,6 +25,10 @@ from django.http import JsonResponse
 from exams.models import PracticeSession, UserPerformance, FreeTrialUsage
 from utils.admin_access import admin_or_premium_required, admin_or_login_required, auto_set_admin_premium, is_admin
 from utils.rate_limit import rate_limit
+from utils.access import (
+    FREE_QUESTION_LIMIT, can_answer_question, free_question_status, free_questions_remaining,
+    subscription_payload, has_full_access as has_platform_access,
+)
 
 # Payment integration import
 try:
@@ -212,53 +216,30 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
             questions = list(questions)
             random.shuffle(questions)
         
-        if not has_full_access and question_bank.has_free_trial:
-            trial, created = FreeTrialUsage.objects.get_or_create(
-                user=request.user,
-                subject=question_bank.subject,
-                defaults={'questions_answered': 0}
-            )
-            
-            if trial.questions_answered >= question_bank.free_trial_questions:
-                upgrade_data = {
-                    'message': f"You've completed all {question_bank.free_trial_questions} free questions for {question_bank.subject.name}! Upgrade to access the full question bank.",
-                    'subject': question_bank.subject.name,
-                    'questions_attempted': trial.questions_answered,
-                    'upgrade_url': "/api/payments/initialize/",
-                    'available_plans': [
-                        {'name': 'Monthly', 'price': '₦3,500', 'duration': '30 days'},
-                        {'name': 'Quarterly', 'price': '₦8,500', 'duration': '90 days'},
-                        {'name': 'Yearly', 'price': '₦40,000', 'duration': '365 days'}
-                    ]
-                }
-                return Response(upgrade_data, status=status.HTTP_402_PAYMENT_REQUIRED)
-            
-            remaining = question_bank.free_trial_questions - trial.questions_answered
+        if not has_full_access:
+            # Free users: 10 questions in total across Practice and Exams.
+            remaining = free_questions_remaining(request.user)
+            if remaining <= 0:
+                return Response(subscription_payload(
+                    'questions', subject=question_bank.subject.name,
+                    free_questions_limit=FREE_QUESTION_LIMIT),
+                    status=status.HTTP_402_PAYMENT_REQUIRED)
             questions = questions[:remaining]
-            
-            response_data = {
+            return Response({
                 'questions': QuestionSerializer(questions, many=True, context={'request': request}).data,
                 'trial_info': {
-                    'total_free': question_bank.free_trial_questions,
-                    'used': trial.questions_answered,
+                    'total_free': FREE_QUESTION_LIMIT,
+                    'used': FREE_QUESTION_LIMIT - remaining,
                     'remaining': remaining,
-                    'subject': question_bank.subject.name
-                }
-            }
-            return Response(response_data)
-        
-        elif has_full_access or question_bank.is_free:
-            limit = request.query_params.get('limit')
-            if limit:
-                questions = questions[:int(limit)]
-            serializer = QuestionSerializer(questions, many=True, context={'request': request})
-            return Response(serializer.data)
-        
-        else:
-            return Response(
-                {'error': 'Please subscribe to access this question bank'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+                    'subject': question_bank.subject.name,
+                },
+            })
+
+        limit = request.query_params.get('limit')
+        if limit:
+            questions = questions[:int(limit)]
+        serializer = QuestionSerializer(questions, many=True, context={'request': request})
+        return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
     def submit_answer_trial(self, request, pk=None):
@@ -295,8 +276,16 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
         except Question.DoesNotExist:
             return Response({'error': 'Question not found'}, status=status.HTTP_404_NOT_FOUND)
         
+        # Free users: 10 questions in total across Practice and Exams. Checked
+        # before anything is saved; the answer is not revealed when blocked.
+        if not can_answer_question(user, question.id):
+            return Response(subscription_payload(
+                'questions', upgrade_prompt={'message': f"You've used your {FREE_QUESTION_LIMIT} free questions.",
+                                             'upgrade_url': '/payment-plans'}),
+                status=status.HTTP_402_PAYMENT_REQUIRED)
+
         is_correct = False
-        if question.question_type == 'OBJECTIVE' and selected_answer:
+        if question.question_type == 'OBJECTIVE' and selected_answer and question.correct_answer:
             is_correct = (question.correct_answer.upper() == selected_answer.upper())
         
         # Save to UserAnswer
@@ -354,45 +343,27 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
                 'has_full_access': True
             })
         
-        # Track trial usage
-        trial, created = FreeTrialUsage.objects.get_or_create(
-            user=user,
-            subject=question_bank.subject,
-            defaults={'questions_answered': 0}
-        )
-        
-        if trial.questions_answered >= question_bank.free_trial_questions:
-            return Response(
-                {
-                    'error': 'Free trial limit reached. Please upgrade to continue.',
-                    'is_correct': is_correct,
-                    'correct_answer': question.get_correct_answer_display() if question.question_type == 'OBJECTIVE' else question.model_answer,
-                    'explanation': question.explanation,
-                    'upgrade_prompt': {
-                        'message': f"You've completed all {question_bank.free_trial_questions} free questions!",
-                        'upgrade_url': "/api/payments/initialize/"
-                    }
-                },
-                status=status.HTTP_402_PAYMENT_REQUIRED
-            )
-        
+        # Per-subject counter kept for reporting; the limit itself is the
+        # global one (utils.access).
+        trial, _ = FreeTrialUsage.objects.get_or_create(
+            user=user, subject=question_bank.subject, defaults={'questions_answered': 0})
         trial.questions_answered += 1
-        trial.save()
-        
+        trial.save(update_fields=['questions_answered', 'last_answered_date'])
+
+        remaining = free_questions_remaining(user)
         response_data = {
             'is_correct': is_correct,
             'correct_answer': question.get_correct_answer_display() if question.question_type == 'OBJECTIVE' else question.model_answer,
             'explanation': question.explanation,
-            'trial_remaining': question_bank.free_trial_questions - trial.questions_answered,
-            'trial_total': question_bank.free_trial_questions
+            'trial_remaining': remaining,
+            'trial_total': FREE_QUESTION_LIMIT,
         }
-        
-        if trial.questions_answered >= question_bank.free_trial_questions:
+        if remaining <= 0:
             response_data['upgrade_prompt'] = {
-                'message': "Congratulations! You've completed all free questions. Upgrade to access the full question bank!",
-                'upgrade_url': "/api/payments/initialize/"
+                'message': f"You've used all {FREE_QUESTION_LIMIT} free questions. Subscribe for unlimited "
+                           "practice, exams, notes, syllabuses and past questions!",
+                'upgrade_url': '/payment-plans',
             }
-        
         return Response(response_data)
 
 
@@ -432,21 +403,18 @@ class FreeTrialViewSet(viewsets.ViewSet):
                 })
             return Response(data)
         
-        trials = FreeTrialUsage.objects.filter(user=request.user).select_related('subject')
-        data = []
-        for trial in trials:
-            banks = QuestionBank.objects.filter(subject=trial.subject, has_free_trial=True)
-            for bank in banks:
-                data.append({
-                    'subject': trial.subject.name,
-                    'subject_id': trial.subject.id,
-                    'questions_answered': trial.questions_answered,
-                    'total_free': bank.free_trial_questions,
-                    'remaining': max(0, bank.free_trial_questions - trial.questions_answered),
-                    'has_upgraded': trial.has_upgraded,
-                    'bank_id': bank.id,
-                    'bank_name': bank.name
-                })
+        remaining = free_questions_remaining(request.user)
+        data = [{
+            'subject': subject.name,
+            'subject_id': subject.id,
+            'questions_answered': FREE_QUESTION_LIMIT - remaining,
+            'total_free': FREE_QUESTION_LIMIT,
+            'remaining': remaining,
+            'has_upgraded': False,
+            'bank_id': 0,
+            'bank_name': 'Free questions (all subjects)',
+            'shared_allowance': True,
+        } for subject in Subject.objects.filter(is_active=True)]
         return Response(data)
     
     @action(detail=True, methods=['get'])
@@ -491,30 +459,21 @@ class FreeTrialViewSet(viewsets.ViewSet):
                 'has_upgraded': True
             })
         
-        trial, created = FreeTrialUsage.objects.get_or_create(
-            user=request.user,
-            subject=subject
-        )
-        banks = QuestionBank.objects.filter(subject=subject, has_free_trial=True)
-        bank_data = []
-        total_remaining = 0
-        for bank in banks:
-            remaining = max(0, bank.free_trial_questions - trial.questions_answered)
-            total_remaining += remaining
-            bank_data.append({
-                'bank_id': bank.id,
-                'bank_name': bank.name,
-                'questions_answered': trial.questions_answered,
-                'total_free': bank.free_trial_questions,
-                'remaining': remaining
-            })
-        
+        remaining = free_questions_remaining(request.user)
+        banks = QuestionBank.objects.filter(subject=subject, is_auto_generated=False)
         return Response({
             'subject': subject.name,
-            'total_questions_answered': trial.questions_answered,
-            'total_remaining': total_remaining,
-            'banks': bank_data,
-            'has_upgraded': trial.has_upgraded
+            'total_questions_answered': FREE_QUESTION_LIMIT - remaining,
+            'total_remaining': remaining,
+            'banks': [{
+                'bank_id': bank.id,
+                'bank_name': bank.name,
+                'questions_answered': FREE_QUESTION_LIMIT - remaining,
+                'total_free': FREE_QUESTION_LIMIT,
+                'remaining': remaining,
+            } for bank in banks],
+            'has_upgraded': False,
+            'shared_allowance': True,
         })
 
 
@@ -697,6 +656,10 @@ class PracticeSessionViewSet(viewsets.ModelViewSet):
         except (Question.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'Question not found', 'code': 'question_not_found'},
                             status=status.HTTP_404_NOT_FOUND)
+
+        # Free users: 10 questions in total across Practice and Exams.
+        if not can_answer_question(request.user, question.id):
+            return Response(subscription_payload('questions'), status=status.HTTP_402_PAYMENT_REQUIRED)
         
         current_question = session.get_next_question()
         if not current_question or current_question.id != question.id:
@@ -1277,8 +1240,9 @@ def api_user_stats(request):
         trial_data.append({
             'subject': trial.subject.name,
             'questions_answered': trial.questions_answered,
-            'remaining': max(0, 5 - trial.questions_answered),
-            'total_free': 5
+            # One shared allowance across all subjects (utils.access).
+            'remaining': free_questions_remaining(request.user),
+            'total_free': FREE_QUESTION_LIMIT
         })
 
     return JsonResponse({
@@ -1289,7 +1253,8 @@ def api_user_stats(request):
             'averageScore': round(float(average_score), 1),
         },
         'recentSessions': recent_data,
-        'freeTrials': trial_data
+        'freeTrials': trial_data,
+        'freeQuestions': free_question_status(request.user),
     })
 
 
@@ -1353,6 +1318,12 @@ class StudyNotesViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     pagination_class = StandardResultsSetPagination
     
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        from utils.access import require_subscription
+        require_subscription(request.user, 'exams')
+
     def get_queryset(self):
         queryset = StudyNotes.objects.filter(is_active=True)
         subject_id = self.request.query_params.get('subject_id')
@@ -1415,6 +1386,12 @@ class PastQuestionsViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     pagination_class = StandardResultsSetPagination
     
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        from utils.access import require_subscription
+        require_subscription(request.user, 'exams')
+
     def get_queryset(self):
         queryset = PastQuestionCollection.objects.filter(is_active=True)
         subject_id = self.request.query_params.get('subject_id')
@@ -1528,11 +1505,18 @@ class PastQuestionsViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def get_study_notes(request, subject_id):
-    """Get study notes for a subject"""
+    """Get study notes for a subject (subscribers only)."""
     try:
         subject = Subject.objects.get(id=subject_id, is_active=True)
     except Subject.DoesNotExist:
         return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not has_platform_access(request.user, 'exams'):
+        return Response(subscription_payload(
+            'exams', message='Study Notes are for subscribers. Subscribe to unlock all notes.',
+            subject_name=subject.name,
+            notes_available=StudyNotes.objects.filter(subject=subject, is_active=True).exists()),
+            status=status.HTTP_402_PAYMENT_REQUIRED)
     
     notes = StudyNotes.objects.filter(subject=subject, is_active=True)
     
@@ -1583,11 +1567,17 @@ PAST_QUESTIONS_LIMIT = 500
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticatedOrReadOnly])
 def get_past_questions(request, subject_id):
-    """Get past questions for a subject"""
+    """Get past questions for a subject (subscribers only)."""
     try:
         subject = Subject.objects.get(id=subject_id, is_active=True)
     except Subject.DoesNotExist:
         return Response({'error': 'Subject not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not has_platform_access(request.user, 'exams'):
+        return Response(subscription_payload(
+            'exams', message='Past Questions are for subscribers. Subscribe to unlock every year.',
+            subject_name=subject.name),
+            status=status.HTTP_402_PAYMENT_REQUIRED)
 
     exam_category_param = request.query_params.get('exam_category')
 
@@ -1777,28 +1767,26 @@ def trial_status_api(request):
                 'is_premium': True
             })
     else:
-        trials = FreeTrialUsage.objects.filter(user=request.user).select_related('subject')
-        trial_data = []
-        for trial in trials:
-            banks = QuestionBank.objects.filter(subject=trial.subject, has_free_trial=True)
-            for bank in banks:
-                trial_data.append({
-                    'subject': trial.subject.name,
-                    'subject_id': trial.subject.id,
-                    'questions_answered': trial.questions_answered,
-                    'total_free': bank.free_trial_questions,
-                    'remaining': max(0, bank.free_trial_questions - trial.questions_answered),
-                    'has_upgraded': trial.has_upgraded,
-                    'bank_id': bank.id,
-                    'bank_name': bank.name
-                })
+        remaining = free_questions_remaining(request.user)
+        trial_data = [{
+            'subject': subject.name,
+            'subject_id': subject.id,
+            'questions_answered': FREE_QUESTION_LIMIT - remaining,
+            'total_free': FREE_QUESTION_LIMIT,
+            'remaining': remaining,
+            'has_upgraded': False,
+            'bank_id': 0,
+            'bank_name': 'Free questions (all subjects)',
+            'shared_allowance': True,
+        } for subject in Subject.objects.filter(is_active=True)]
     
     return Response({
         'success': True,
         'has_full_access': has_full_access,
         'is_premium': hasattr(request.user, 'profile') and request.user.profile.is_premium,
         'is_admin': is_admin(request.user),
-        'trials': trial_data
+        'trials': trial_data,
+        **free_question_status(request.user),
     })
 
 

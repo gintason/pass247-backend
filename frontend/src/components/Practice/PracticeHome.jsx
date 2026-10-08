@@ -133,7 +133,7 @@ const PracticeHome = () => {
               subject_id: bank.subject,
               question_count: bank.question_count || 0,
               is_subscribed: bank.is_subscribed || false,
-              free_trial_remaining: bank.free_trial_remaining !== undefined ? bank.free_trial_remaining : 5,
+              free_trial_remaining: bank.free_trial_remaining !== undefined ? bank.free_trial_remaining : 10,
               description: bank.description || ''
             });
           } else {
@@ -524,8 +524,8 @@ const PracticeHome = () => {
             <h5 style={{ color: '#92400e', marginBottom: '0.25rem' }}>Free Trial Mode</h5>
             <p style={{ color: '#78350f', margin: 0 }}>
               {trialInfo
-                ? `You have ${trialInfo.remaining} of ${trialInfo.total_free || 5} free questions remaining`
-                : 'Try 5 free questions per subject!'
+                ? `You have ${trialInfo.remaining} of ${trialInfo.total_free || 10} free questions left (shared across all subjects and exams)`
+                : 'Free accounts get 10 questions across all subjects and exams.'
               }
             </p>
           </div>

@@ -88,8 +88,8 @@ const Exams = () => {
         navigate(`/practice/${examType}/${encodeURIComponent(subjectName)}?trial=true`);
         return;
       }
-      if (trialInfo && trialInfo.questions_answered >= 5) {
-        setUpgradeData({ message: `You've completed all 5 free questions for ${subjectName}. Upgrade to access the full question bank!`, subject: subjectName });
+      if (trialInfo && trialInfo.remaining <= 0) {
+        setUpgradeData({ message: "You've used your 10 free questions. Subscribe for unlimited practice, exams, notes, syllabuses and past questions!", subject: subjectName });
         setShowUpgrade(true);
         return;
       }
@@ -125,10 +125,11 @@ const Exams = () => {
   const renderTrialBadge = (subject) => {
     const trial = getSubjectTrialStatus(subject);
     if (trial) {
-      if (trial.remaining > 0) return <span className="trial-badge free"><i className="fas fa-gift"></i> {trial.remaining}/5 free</span>;
-      if (trial.questions_answered >= 5) return <span className="trial-badge upgrade"><i className="fas fa-lock"></i> Upgrade</span>;
+      if (trial.remaining === 'unlimited') return null;
+      if (trial.remaining > 0) return <span className="trial-badge free"><i className="fas fa-gift"></i> {trial.remaining} free left</span>;
+      return <span className="trial-badge upgrade"><i className="fas fa-lock"></i> Upgrade</span>;
     }
-    return <span className="trial-badge free"><i className="fas fa-gift"></i> 5 free</span>;
+    return <span className="trial-badge free"><i className="fas fa-gift"></i> Free</span>;
   };
 
   return (
@@ -319,7 +320,7 @@ const Exams = () => {
             <h2 className="section-title">Choose Your Exam</h2>
             <p className="section-subtitle">
               Select the examination you're preparing for and start practicing
-              <span className="d-block mt-2 text-warning"><i className="fas fa-gift me-2"></i>Try 5 questions per subject for free!</span>
+              <span className="d-block mt-2 text-warning"><i className="fas fa-gift me-2"></i>Sign up and try 10 free questions — subscribe for notes, syllabuses, past questions and unlimited practice.</span>
             </p>
             <div className="text-center mt-3">
               <button
@@ -389,7 +390,7 @@ const Exams = () => {
         <div className="cta-container">
           <motion.div className="cta-content" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
             <h2 className="cta-title">Ready to Ace Your Exams?</h2>
-            <p className="cta-subtitle">Start with 5 free questions per subject today!</p>
+            <p className="cta-subtitle">Start with 10 free questions today!</p>
             <button className="btn-cta" onClick={() => { const firstExam = examCategories[0]; handleStartPracticing(firstExam.id, firstExam.subjects[0]); }} disabled={creatingSession}>
               {creatingSession ? <><span className="btn-spinner"></span> Loading...</> : <>Try Free Now <i className="fas fa-gift"></i></>}
             </button>

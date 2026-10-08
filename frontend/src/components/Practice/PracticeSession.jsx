@@ -457,33 +457,22 @@ const PracticeSession = () => {
 
   if (showUpgradePrompt) {
     return (
-      <div className="container mt-5" style={{ minHeight: '70vh' }}>
-        <div className="row justify-content-center">
-          <div className="col-md-6">
-            <div className="card shadow-lg border-0">
-              <div className="card-body text-center p-5">
-                <div className="mb-4">
-                  <i className="fas fa-gift text-warning display-1"></i>
-                </div>
-                <h3 className="mb-3">Free Trial Complete!</h3>
-                <p className="text-muted mb-4">
-                  {upgradeData?.message || "You've completed all free questions. Upgrade to continue practicing!"}
-                </p>
-                <div className="d-grid gap-2">
-                  <button
-                    className="btn btn-warning btn-lg"
-                    onClick={() => navigate(`/payment-plans?bank_id=${bankId}&subject=${encodeURIComponent(subjectName || '')}`)}
-                  >
-                    <i className="fas fa-crown me-2"></i>
-                    Upgrade to Continue
-                  </button>
-                  <button className="btn btn-outline-secondary" onClick={() => navigate('/exams')}>
-                    Back to Exams
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="container mt-5" style={{ minHeight: '70vh', maxWidth: 900 }}>
+        <div className="text-center mb-4">
+          <div className="display-5 mb-2">🎁</div>
+          <h3 className="mb-2">You've used your free questions</h3>
+          <p className="text-muted mb-0">
+            {upgradeData?.message || upgradeData?.error
+              || "Free accounts get 10 questions across all subjects and exams. Subscribe for unlimited access."}
+          </p>
+        </div>
+        <UpgradeCTA
+          title="Subscribe to keep going"
+          message="Unlimited practice and exams, plus Study Notes, Syllabuses, Past Questions, interview answers and quizzes." />
+        <div className="text-center mt-3">
+          <button className="btn btn-outline-secondary" onClick={() => navigate('/exams')}>
+            Back to Exams
+          </button>
         </div>
       </div>
     );
@@ -546,7 +535,7 @@ const PracticeSession = () => {
                 <div>
                   <i className="fas fa-gift me-2"></i>
                   <strong>Free Trial Mode</strong>
-                  {trialRemaining !== null && <span className="ms-2">- {trialRemaining} questions remaining</span>}
+                  {trialRemaining !== null && <span className="ms-2">- {trialRemaining} of 10 free questions left (all subjects)</span>}
                 </div>
                 <button className="btn btn-warning btn-sm" onClick={() => navigate(`/payment-plans?bank_id=${bankId}`)}>
                   Upgrade
@@ -587,7 +576,7 @@ const PracticeSession = () => {
           )}
 
           {activeTab === 'practice' && !sessionCompleted && (
-            <ProgressBar current={questionIndex + 1} total={isTrial ? 5 : totalQuestions} />
+            <ProgressBar current={questionIndex + 1} total={totalQuestions} />
           )}
 
           {activeTab === 'practice' && !sessionCompleted && !isTrial && totalQuestions > 1 && (
@@ -837,7 +826,7 @@ const PracticeSession = () => {
                 <div className="card bg-primary text-white shadow-sm">
                   <div className="card-body text-center">
                     <h6 className="text-white-50">Progress</h6>
-                    <h3>{questionIndex + 1}/{isTrial ? 5 : totalQuestions}</h3>
+                    <h3>{questionIndex + 1}/{totalQuestions}</h3>
                   </div>
                 </div>
               </div>

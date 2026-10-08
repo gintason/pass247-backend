@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/client';
+import LockedContent from './LockedContent';
 
 /**
  * Past Questions engine with an Exam Year Picker.
@@ -19,6 +20,7 @@ const PastQuestions = ({ subjectName, subjectId, examCategory, initialYear = 'al
   const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(!invalidId);
   const [error, setError] = useState(invalidId ? 'Subject ID not available' : null);
+  const [locked, setLocked] = useState(false); // 402: subscribers only
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [feedbackByQuestion, setFeedbackByQuestion] = useState({});
@@ -41,7 +43,10 @@ const PastQuestions = ({ subjectName, subjectId, examCategory, initialYear = 'al
         setError(null);
       } catch (err) {
         console.error('Error fetching past questions:', err);
-        if (!cancelled) setError('Failed to load past questions');
+        if (!cancelled) {
+          if (err.response?.status === 402) setLocked(true);
+          else setError('Failed to load past questions');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -95,6 +100,14 @@ const PastQuestions = ({ subjectName, subjectId, examCategory, initialYear = 'al
         <h5>Past Questions Unavailable</h5>
         <p className="text-muted">Please choose a subject first.</p>
       </div>
+    );
+  }
+
+  if (locked) {
+    return (
+      <LockedContent
+        title="Past Questions are for subscribers"
+        message={`Subscribe to practise every past ${subjectName || ''} paper by year, with answers and explanations.`} />
     );
   }
 

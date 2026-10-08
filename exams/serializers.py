@@ -77,18 +77,15 @@ class QuestionBankListSerializer(serializers.ModelSerializer):
         return obj.questions.count()
     
     def get_free_trial_remaining(self, obj):
+        """One shared allowance of 10 free questions across all subjects."""
+        from utils.access import FREE_QUESTION_LIMIT, free_questions_remaining
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            try:
-                trial = FreeTrialUsage.objects.get(
-                    user=request.user,
-                    subject=obj.subject
-                )
-                remaining = max(0, obj.free_trial_questions - trial.questions_answered)
-                return remaining
-            except FreeTrialUsage.DoesNotExist:
-                return obj.free_trial_questions
-        return obj.free_trial_questions
+            # Cached per request: the same number for every bank in the list.
+            if not hasattr(request, '_free_questions_remaining'):
+                request._free_questions_remaining = free_questions_remaining(request.user)
+            return request._free_questions_remaining
+        return FREE_QUESTION_LIMIT
     
     def get_is_subscribed(self, obj):
         request = self.context.get('request')

@@ -186,7 +186,9 @@ class PastQuestionsCategoryResolutionTests(TestCase):
         )
         self.q.exam_year = self.year
         self.q.save()
+        # Past Questions are for subscribers.
         self.user = make_user()
+        make_active_subscription(self.user)
 
     def _get(self, exam_category):
         self.client.force_authenticate(user=self.user)

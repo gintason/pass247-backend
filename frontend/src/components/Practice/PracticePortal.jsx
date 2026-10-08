@@ -5,6 +5,7 @@ import StudyNotesViewer from './StudyNotesViewer';
 import SyllabusPicker from './SyllabusPicker';
 import PastQuestions from './PastQuestions';
 import UpgradeCTA from './UpgradeCTA';
+import LockedContent from './LockedContent';
 
 /**
  * Practice Portal - /practice-portal/:examType?subject=<id>&tab=<tab>&year=<yyyy>
@@ -24,10 +25,11 @@ const FALLBACK_BODIES = [
   { slug: 'post-utme', display_name: 'Post-UTME' },
 ];
 
+// `premium` sections are visible to everyone but need a subscription to open.
 const TABS = [
-  { id: 'notes', label: 'Study Notes', icon: '📖', color: '#059669' },
-  { id: 'syllabus', label: 'Exam Syllabus', icon: '📜', color: '#0b7fa8' },
-  { id: 'past', label: 'Past Questions', icon: '🗂️', color: '#7c3aed' },
+  { id: 'notes', label: 'Study Notes', icon: '📖', color: '#059669', premium: true },
+  { id: 'syllabus', label: 'Exam Syllabus', icon: '📜', color: '#0b7fa8', premium: true },
+  { id: 'past', label: 'Past Questions', icon: '🗂️', color: '#7c3aed', premium: true },
   { id: 'practice', label: 'Practice Questions', icon: '📝', color: '#4400ff' },
 ];
 
@@ -45,6 +47,9 @@ const PracticeSets = ({ examType, subject, access }) => {
   const [loading, setLoading] = useState(true);
   const [startingKey, setStartingKey] = useState(null);
   const [error, setError] = useState(null);
+  const [outOfFree, setOutOfFree] = useState(false);
+  const freeLeft = access?.free_questions_remaining;
+  const exhausted = outOfFree || (access?.is_authenticated && !access?.full_access && freeLeft === 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +90,7 @@ const PracticeSets = ({ examType, subject, access }) => {
       navigate(`/practice/session/${res.data.session_id}?${params.toString()}`);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) { redirectToLogin(navigate); return; }
+      if (err.response?.status === 402) { setOutOfFree(true); setStartingKey(null); return; }
       setError(err.response?.data?.error || 'Could not start practice. Please try again.');
       setStartingKey(null);
     }
@@ -100,13 +106,24 @@ const PracticeSets = ({ examType, subject, access }) => {
         <div>
           <h5 className="mb-1">Practice {subject.name}</h5>
           <div className="small text-muted">
-            <i className="fas fa-unlock me-1 text-success"></i>
-            Free for signed-up students · instant feedback & explanations · pair with the Study Notes tab
+            {access?.full_access
+              ? <><i className="fas fa-unlock me-1 text-success"></i>Unlimited practice · instant feedback & explanations</>
+              : access?.is_authenticated
+                ? <><i className="fas fa-gift me-1 text-warning"></i>Free account: <strong>{freeLeft ?? 0}</strong> of {access?.free_questions_limit ?? 10} free questions left (shared across all subjects and exams)</>
+                : <>Sign in to answer up to 10 free questions.</>}
           </div>
         </div>
       </div>
 
       {error && <div className="alert alert-warning">{error}</div>}
+
+      {exhausted && (
+        <div className="mb-3">
+          <LockedContent
+            title="You've used your 10 free questions"
+            message="Subscribe for unlimited practice and exams, plus Study Notes, Syllabuses and Past Questions." />
+        </div>
+      )}
 
       {sets.length === 0 ? (
         <div className="text-center py-5 text-muted">
@@ -125,7 +142,7 @@ const PracticeSets = ({ examType, subject, access }) => {
                 <div className="d-flex justify-content-between align-items-center mt-auto pt-2">
                   <span className="badge rounded-pill text-bg-light">{set.question_count} questions</span>
                   <button type="button" className="btn btn-sm btn-primary fw-semibold"
-                    disabled={startingKey !== null} onClick={() => start(set)}>
+                    disabled={startingKey !== null || exhausted} onClick={() => start(set)}>
                     {startingKey === key
                       ? <><span className="spinner-border spinner-border-sm me-1"></span>Starting…</>
                       : <>Start practice <i className="fas fa-play ms-1"></i></>}
@@ -372,6 +389,14 @@ const PracticePortal = () => {
               ))}
             </select>
           </div>
+          {access?.is_authenticated && !access.full_access && (
+            <div className="pp-signin">
+              <i className="fas fa-gift me-2"></i>
+              Free account: <strong>{access.free_questions_remaining}</strong> of {access.free_questions_limit} free questions left.
+              Notes, syllabuses and past questions are 🔒 for subscribers.{' '}
+              <button type="button" className="btn btn-link p-0 text-warning fw-bold" onClick={() => navigate('/payment-plans')}>Subscribe</button>
+            </div>
+          )}
           {access && !access.is_authenticated && (
             <div className="pp-signin">
               <i className="fas fa-user-plus me-2"></i>
@@ -397,7 +422,9 @@ const PracticePortal = () => {
                   style={tab === t.id ? { background: t.color, borderColor: t.color } : undefined}
                   onClick={() => updateParams({ tab: t.id })}>
                   <span aria-hidden="true">{t.icon}</span> {t.label}
-                  {counts[t.id] && <span className="pp-tab__count">{counts[t.id]}</span>}
+                  {t.premium && access && !access.full_access
+                    ? <span className="pp-tab__count" title="Subscribers only">🔒</span>
+                    : counts[t.id] && <span className="pp-tab__count">{counts[t.id]}</span>}
                 </button>
               ))}
             </div>

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
+import LockedContent from '../Practice/LockedContent';
 import api, { fetchCSRFToken } from '../../api/client';
 
 const UntimedQuiz = () => {
@@ -24,6 +25,8 @@ const UntimedQuiz = () => {
   const [results, setResults] = useState(null);
   const [showHint, setShowHint] = useState(false);
   const [error, setError] = useState(null);
+  // Set when the API answers 402: quizzes need a subscription.
+  const [locked, setLocked] = useState(false);
 
   // ============================================================
   // FUNCTIONS DECLARED BEFORE EFFECTS
@@ -58,6 +61,7 @@ const UntimedQuiz = () => {
       setQuizStarted(true);
       setLoading(false);
     } catch (error) {
+      if (error.response?.status === 402) { setLocked(true); setLoading(false); return; }
       console.error('Error loading questions:', error);
       toast.error('Failed to load questions');
       setLoading(false);
@@ -208,6 +212,16 @@ const UntimedQuiz = () => {
     const answered = Object.keys(answers).filter(id => answers[id]?.trim()).length;
     return (answered / questions.length) * 100;
   };
+
+  if (locked) {
+    return (
+      <div className="container py-5" style={{ maxWidth: 860, minHeight: '70vh' }}>
+        <LockedContent
+          title="Quizzes are for subscribers"
+          message="Timed and untimed quizzes are part of a paid plan. Subscribe to unlock them, plus every interview answer, study notes, syllabuses and past questions." />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

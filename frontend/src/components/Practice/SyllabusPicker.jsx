@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { MarkdownContent } from './StudyNotesViewer';
+import LockedContent from './LockedContent';
 
 /**
  * Exam Syllabus picker: choose an exam body (WAEC, JAMB, JSSCE, ...), pick a
@@ -12,6 +13,8 @@ const SyllabusPicker = ({ examBodies = [], examCategory, subjectId, subjectName 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Free users see which syllabuses exist but cannot open them.
+  const [locked, setLocked] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -31,6 +34,7 @@ const SyllabusPicker = ({ examBodies = [], examCategory, subjectId, subjectName 
         const items = [...(res.data.syllabuses || [])].sort(
           (a, b) => Number(!a.subject) - Number(!b.subject));
         setList(items);
+        setLocked(!!res.data.locked);
         setSelectedId(items.length ? items[0].id : null);
         setError(null);
       } catch (err) {
@@ -44,7 +48,7 @@ const SyllabusPicker = ({ examBodies = [], examCategory, subjectId, subjectName 
   }, [body, subjectId]);
 
   useEffect(() => {
-    if (!selectedId) return undefined;
+    if (!selectedId || locked) return undefined;
     let cancelled = false;
     (async () => {
       await Promise.resolve();
@@ -59,7 +63,7 @@ const SyllabusPicker = ({ examBodies = [], examCategory, subjectId, subjectName 
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedId]);
+  }, [selectedId, locked]);
 
   const current = selectedId ? (detail?.id === selectedId ? detail : list.find((s) => s.id === selectedId)) : null;
 
@@ -101,7 +105,13 @@ const SyllabusPicker = ({ examBodies = [], examCategory, subjectId, subjectName 
         </div>
       )}
 
-      {current && (
+      {current && locked && (
+        <LockedContent
+          title={`${current.title} — subscribers only`}
+          message="Subscribe to view and download the official syllabus, plus study notes, past questions and unlimited practice." />
+      )}
+
+      {current && !locked && (
         <div className="card border-0 shadow-sm">
           <div className="card-body">
             <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">

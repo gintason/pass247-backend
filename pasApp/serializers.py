@@ -25,7 +25,28 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.interviews.count()
 
 
-class InterviewSerializer(serializers.ModelSerializer):
+class GatedAnswerMixin:
+    """
+    Hides `answer` beyond the free allowance (10 answers in total for users
+    without a subscription). Applied in the serializer so every endpoint that
+    returns interviews - lists, detail, search, featured, bookmarks - obeys it.
+    """
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        request = self.context.get('request')
+        if request is None:
+            return data
+        from .access import get_gate
+        if get_gate(request).allows(obj.id):
+            data['is_locked'] = False
+        else:
+            data['answer'] = None
+            data['is_locked'] = True
+        return data
+
+
+class InterviewSerializer(GatedAnswerMixin, serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
@@ -43,7 +64,7 @@ class InterviewSerializer(serializers.ModelSerializer):
         return False
 
 
-class InterviewListSerializer(serializers.ModelSerializer):
+class InterviewListSerializer(GatedAnswerMixin, serializers.ModelSerializer):
     """Lightweight serializer for list views"""
     product_name = serializers.CharField(source='product.name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)

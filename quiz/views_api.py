@@ -9,6 +9,7 @@ from .serializers import *
 from pasApp.models import Product, Interview
 from utils.admin_access import is_admin, admin_or_premium_required, admin_or_login_required
 from payments.utils import check_quiz_access
+from utils.access import require_subscription
 import json
 import difflib
 
@@ -27,6 +28,8 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'])
     def questions(self, request, pk=None):
         """Get questions for a specific category - with admin bypass"""
+        # Timed & untimed quizzes are for subscribers only (402 otherwise).
+        require_subscription(request.user, 'quiz')
         category = self.get_object()
         questions = category.questions.all()
         
@@ -83,6 +86,12 @@ class QuestionViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ['category']
     search_fields = ['question']
     
+
+    def initial(self, request, *args, **kwargs):
+        # Timed & untimed quizzes are for subscribers only (402 otherwise).
+        super().initial(request, *args, **kwargs)
+        require_subscription(request.user, 'quiz')
+
     def list(self, request, *args, **kwargs):
         """List questions with admin bypass"""
         queryset = self.filter_queryset(self.get_queryset())
@@ -261,6 +270,8 @@ class QuestionViewSet(viewsets.ReadOnlyModelViewSet):
 @permission_classes([permissions.IsAuthenticated])
 def get_product_questions(request, product_id):
     """Get questions for a specific product/interview - with admin bypass"""
+    # Timed & untimed quizzes are for subscribers only (402 otherwise).
+    require_subscription(request.user, 'quiz')
     product = get_object_or_404(Product, id=product_id)
     
     # Admin bypass: Full access without restrictions
@@ -313,6 +324,8 @@ def get_product_questions(request, product_id):
 @permission_classes([permissions.IsAuthenticated])
 def submit_timed_quiz(request):
     """Submit timed quiz answers and calculate score - with admin bypass"""
+    # Timed & untimed quizzes are for subscribers only (402 otherwise).
+    require_subscription(request.user, 'quiz')
     data = request.data
     answers = data.get('answers', [])
     time_taken = data.get('time_taken', '0:00')

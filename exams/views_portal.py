@@ -248,13 +248,23 @@ def exam_years(request):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def portal_access(request):
-    """What the current visitor can use - drives the upgrade prompts."""
+    """What the current visitor can use - drives the lock icons and upgrade prompts."""
+    from utils.access import free_question_status
     user = request.user
     signed_in = bool(user and user.is_authenticated)
+    status_ = free_question_status(user) if signed_in else {
+        'full_access': False, 'free_questions_limit': None,
+        'free_questions_used': 0, 'free_questions_remaining': None}
+    full = status_['full_access']
     return Response({
         'is_authenticated': signed_in,
-        'practice_unlocked': signed_in,
-        'main_exam_unlocked': has_main_exam_access(user) if signed_in else False,
+        'full_access': full,
+        'practice_unlocked': signed_in and (full or (status_['free_questions_remaining'] or 0) > 0),
+        'main_exam_unlocked': full,
+        'notes_unlocked': full,
+        'syllabus_unlocked': full,
+        'past_questions_unlocked': full,
+        **{k: v for k, v in status_.items() if k != 'full_access'},
         'upgrade_url': '/payment-plans',
     })
 
@@ -352,6 +362,15 @@ def start_practice(request):
         else:
             category = subject.exam_categories.first() or (
                 questions.first().exam_category if questions.exists() else None)
+
+    # Free users: 10 questions in total across Practice and Exams; the session
+    # holds at most the number of free questions they have left.
+    from utils.access import has_full_access, free_questions_remaining, subscription_payload
+    if not has_full_access(request.user, 'exams'):
+        remaining = free_questions_remaining(request.user)
+        if remaining <= 0:
+            return Response(subscription_payload('questions'), status=status.HTTP_402_PAYMENT_REQUIRED)
+        limit = min(limit or remaining, remaining)
 
     question_ids = _shuffled_ids(questions, limit or MAX_PRACTICE_QUESTIONS)
     if not question_ids or category is None:
@@ -467,8 +486,14 @@ def syllabus_list(request):
     subject = _resolve_subject(request.query_params.get('subject'))
     if subject:
         qs = qs.filter(Q(subject=subject) | Q(subject__isnull=True))
-    serializer = ExamSyllabusSerializer(qs, many=True, context={'request': request})
-    return Response({'syllabuses': serializer.data})
+    from utils.access import has_full_access
+    unlocked = has_full_access(request.user, 'exams')
+    data = ExamSyllabusSerializer(qs, many=True, context={'request': request}).data
+    if not unlocked:
+        # Students can see which syllabuses exist (the "button"), not open them.
+        for item in data:
+            item.update({'file_url': None, 'external_url': '', 'locked': True})
+    return Response({'syllabuses': data, 'locked': not unlocked})
 
 
 @api_view(['GET'])
@@ -478,6 +503,11 @@ def syllabus_detail(request, pk):
         'exam_category', 'subject').first()
     if not syllabus:
         return _error('Syllabus not found', 'syllabus_not_found', status.HTTP_404_NOT_FOUND)
+    from utils.access import has_full_access, subscription_payload
+    if not has_full_access(request.user, 'exams'):
+        return Response(subscription_payload(
+            'exams', message='Syllabuses are for subscribers. Subscribe to view and download them.',
+            title=syllabus.title), status=status.HTTP_402_PAYMENT_REQUIRED)
     return Response(ExamSyllabusDetailSerializer(syllabus, context={'request': request}).data)
 
 

@@ -84,53 +84,37 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 'message': 'Admin access: All interviews unlocked'
             })
         
-        # For non-admin users, apply payment/premium restrictions
-        # Check if user is authenticated and has premium access
-        has_premium_access = False
-        if request.user.is_authenticated:
-            # Check if user has premium profile
-            if check_interview_access(request.user)[0]:
-                has_premium_access = True
-        
-        # For non-premium users, limit number of interviews or show only free content
-        if not has_premium_access and not is_admin(request.user):
-            # Option 1: Limit to first 5 interviews for non-premium users
-            interviews = interviews[:5] if request.user.is_authenticated else interviews[:3]
-            message = "Premium subscription required for full access. Upgrade to see all interviews."
-        else:
-            message = None
-        
-        # Filter by difficulty if provided
+        # Non-admins: every question is listed; answers beyond the free
+        # allowance (10 in total) come back as answer=None, is_locked=True
+        # (see GatedAnswerMixin). Filters are applied before pagination.
         difficulty = request.query_params.get('difficulty')
         if difficulty:
             interviews = interviews.filter(difficulty=difficulty.upper())
-        
-        # Filter by category if provided
         category = request.query_params.get('category')
         if category:
             interviews = interviews.filter(category__slug=category)
-        
-        # Search in questions
         search = request.query_params.get('search')
         if search:
             interviews = interviews.filter(question__icontains=search)
-        
-        # Paginate
+
+        from .access import get_gate
         page = self.paginate_queryset(interviews)
+        items = page if page is not None else interviews
+        data = InterviewListSerializer(items, many=True, context={'request': request}).data
+        gate = get_gate(request)
+        extra = {'access': gate.summary()}
+        if not gate.full:
+            extra['upgrade_message'] = (
+                f"Free accounts can read {gate.summary()['free_interviews_limit']} interview answers. "
+                "Subscribe to unlock every answer plus the timed and untimed quizzes."
+                if request.user.is_authenticated else
+                "Sign up to read free interview answers, or subscribe to unlock everything.")
+            extra['upgrade_url'] = '/payment-plans'
         if page is not None:
-            serializer = InterviewListSerializer(page, many=True, context={'request': request})
-            response_data = self.get_paginated_response(serializer.data)
-            if message:
-                response_data.data['upgrade_message'] = message
-                response_data.data['upgrade_url'] = '/api/payments/plans/'
-            return response_data
-        
-        serializer = InterviewListSerializer(interviews, many=True, context={'request': request})
-        response_data = {'results': serializer.data}
-        if message:
-            response_data['upgrade_message'] = message
-            response_data['upgrade_url'] = '/api/payments/plans/'
-        return Response(response_data)
+            response = self.get_paginated_response(data)
+            response.data.update(extra)
+            return response
+        return Response({'results': data, **extra})
 
 
 class InterviewViewSet(viewsets.ReadOnlyModelViewSet):
@@ -160,31 +144,16 @@ class InterviewViewSet(viewsets.ReadOnlyModelViewSet):
                 'message': 'Admin access: Full interview details unlocked'
             })
         
-        # For non-admin users, check premium access for full content
-        has_premium_access = False
-        if request.user.is_authenticated:
-            if check_interview_access(request.user)[0]:
-                has_premium_access = True
-        
-        # For non-premium users, limit what they can see
-        if not has_premium_access:
-            # Only show partial answer or ask to upgrade
-            partial_answer = instance.answer[:200] + "..." if len(instance.answer) > 200 else instance.answer
-            instance.views_count += 1
-            instance.save()
-            serializer = self.get_serializer(instance)
-            data = serializer.data
-            data['answer'] = partial_answer
-            data['premium_required'] = True
-            data['upgrade_message'] = "Subscribe to premium to see the complete answer and access all interviews."
-            data['upgrade_url'] = '/api/payments/plans/'
-            return Response(data)
-        
-        # Premium user or interview already accessible
+        # Non-admins: the serializer hides the answer beyond the free allowance.
         instance.views_count += 1
-        instance.save()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        instance.save(update_fields=['views_count'])
+        data = self.get_serializer(instance).data
+        if data.get('is_locked'):
+            data['premium_required'] = True
+            data['upgrade_message'] = ("You've read your free interview answers. Subscribe to unlock "
+                                       "every answer plus the timed and untimed quizzes.")
+            data['upgrade_url'] = '/payment-plans'
+        return Response(data)
     
     @action(detail=False, methods=['get'])
     def featured(self, request):

@@ -229,3 +229,10 @@ def set_stale_premium_flag(user, expiry=None):
     profile.premium_expiry = expiry
     profile.save()
     return profile
+
+
+def make_subscriber(username='subscriber', **kwargs):
+    """A signed-up user with an active paid plan (full platform access)."""
+    user = make_user(username=username, **kwargs)
+    make_active_subscription(user)
+    return user

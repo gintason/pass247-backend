@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { toast } from 'react-toastify';
+import LockedContent from '../Practice/LockedContent';
 
 const InterviewDetail = () => {
   const { slug } = useParams();
@@ -22,6 +23,8 @@ const InterviewDetail = () => {
   const [selectedQuizCategory, setSelectedQuizCategory] = useState(null);
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [quizType, setQuizType] = useState(null);
+  // Free-tier summary from the API: full_access, free_interviews_remaining...
+  const [access, setAccess] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -61,6 +64,7 @@ const InterviewDetail = () => {
       const interviewsResponse = await api.get(`/api/interview/products/${productResponse.data.slug}/interviews/`);
       const interviewsData = interviewsResponse.data.results || interviewsResponse.data || [];
       setInterviews(interviewsData);
+      setAccess(interviewsResponse.data.access || null);
       
       setLoading(false);
     } catch (error) {
@@ -132,6 +136,12 @@ const InterviewDetail = () => {
   const handleQuizSelection = (type) => {
     if (!user) {
       navigate('/login?redirect=' + encodeURIComponent(`/interview/${slug}`));
+      return;
+    }
+
+    if (access && !access.full_access) {
+      toast.info('Timed and untimed quizzes are for subscribers. Choose a plan to unlock them.');
+      navigate('/payment-plans');
       return;
     }
 
@@ -290,7 +300,7 @@ const InterviewDetail = () => {
                         <i className="bi bi-clock-history fs-1"></i>
                       </div>
                       <div>
-                        <h4 className="fw-bold mb-1">Timed Quiz</h4>
+                        <h4 className="fw-bold mb-1">Timed Quiz {access && !access.full_access && <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '0.65rem' }}>🔒 Subscribers</span>}</h4>
                         <p className="mb-0 opacity-75">Test your knowledge under pressure</p>
                       </div>
                     </div>
@@ -323,7 +333,7 @@ const InterviewDetail = () => {
                         <i className="bi bi-hourglass-split fs-1" style={{ color: '#4400ff' }}></i>
                       </div>
                       <div>
-                        <h4 className="fw-bold mb-1" style={{ color: '#4400ff' }}>Untimed Quiz</h4>
+                        <h4 className="fw-bold mb-1" style={{ color: '#4400ff' }}>Untimed Quiz {access && !access.full_access && <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '0.65rem' }}>🔒 Subscribers</span>}</h4>
                         <p className="mb-0 text-muted">Learn at your own pace</p>
                       </div>
                     </div>
@@ -466,6 +476,20 @@ const InterviewDetail = () => {
         <div className="container">
           <div className="row justify-content-center">
             <div className="col-lg-10">
+              {access && !access.full_access && (
+                <div className="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" style={{ borderRadius: 14 }}>
+                  <span>
+                    <i className="bi bi-unlock-fill me-2"></i>
+                    {user
+                      ? <>Free account: <strong>{access.free_interviews_remaining}</strong> of {access.free_interviews_limit} free answers left. Locked answers show 🔒.</>
+                      : <>Log in to read free interview answers.</>}
+                  </span>
+                  <button type="button" className="btn btn-sm btn-warning fw-bold" onClick={() => navigate(user ? '/payment-plans' : '/login')}>
+                    {user ? 'Subscribe to unlock all' : 'Log in'}
+                  </button>
+                </div>
+              )}
+
               {filteredInterviews.length === 0 ? (
                 <motion.div 
                   className="text-center py-5"
@@ -539,7 +563,15 @@ const InterviewDetail = () => {
                                   <i className="bi bi-chat-dots-fill me-2"></i>
                                   Answer:
                                 </h6>
-                                <p className="mb-0">{interview.answer}</p>
+                                {interview.is_locked ? (
+                                  <LockedContent compact signedIn={!!user}
+                                    title="Answer locked"
+                                    message={user
+                                      ? "You've used your free interview answers. Subscribe to read every answer and take the timed & untimed quizzes."
+                                      : 'Log in or create a free account to read interview answers.'} />
+                                ) : (
+                                  <p className="mb-0">{interview.answer}</p>
+                                )}
                                 
                                 {!user && (
                                   <div className="alert alert-warning mt-3 mb-0">

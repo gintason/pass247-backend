@@ -9,7 +9,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from quiz.models import Category, Question
-from utils.factories import make_user, make_admin
+from utils.factories import make_subscriber, make_user, make_admin
 
 
 def iter_payload_dicts(payload):
@@ -54,20 +54,23 @@ class QuizAnswerLeakageTests(TestCase):
                 )
 
     def test_question_list_hides_answers_from_anonymous(self):
-        self.assertNoAnswers(self.client.get('/api/quiz/questions/'), 'anon list')
+        # Quizzes are for subscribers: anonymous users get 402 and no answers.
+        response = self.client.get('/api/quiz/questions/')
+        self.assertEqual(response.status_code, 402)
+        self.assertNotIn('Abuja', response.content.decode())
 
     def test_question_list_hides_answers_from_user(self):
-        self.client.force_authenticate(user=make_user())
+        self.client.force_authenticate(user=make_subscriber())
         self.assertNoAnswers(self.client.get('/api/quiz/questions/'), 'user list')
 
     def test_question_detail_hides_answers(self):
-        self.client.force_authenticate(user=make_user())
+        self.client.force_authenticate(user=make_subscriber())
         self.assertNoAnswers(
             self.client.get(f'/api/quiz/questions/{self.question.pk}/'), 'detail'
         )
 
     def test_category_questions_hides_answers(self):
-        self.client.force_authenticate(user=make_user())
+        self.client.force_authenticate(user=make_subscriber())
         self.assertNoAnswers(
             self.client.get(f'/api/quiz/categories/{self.category.uid}/questions/'),
             'category questions',
@@ -145,7 +148,7 @@ class QuizGradingTests(TestCase):
 
     def test_submit_timed_quiz_scores_server_side(self):
         client = APIClient()
-        client.force_authenticate(user=make_user())
+        client.force_authenticate(user=make_subscriber())
         response = client.post(
             '/api/quiz/submit-timed/',
             {
@@ -163,7 +166,7 @@ class QuizGradingTests(TestCase):
     def test_client_cannot_dictate_its_own_score(self):
         """A forged score in the request body must be ignored."""
         client = APIClient()
-        client.force_authenticate(user=make_user())
+        client.force_authenticate(user=make_subscriber())
         response = client.post(
             '/api/quiz/submit-timed/',
             {

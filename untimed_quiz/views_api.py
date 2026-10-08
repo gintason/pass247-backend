@@ -7,6 +7,7 @@ from .models import UntimedCategory, UntimedQuestion, UntimedUserResponse
 from .serializers import *
 from utils.admin_access import is_admin, admin_or_premium_required, admin_or_login_required
 from payments.utils import check_quiz_access
+from utils.access import require_subscription
 import difflib
 
 # Define the pagination class FIRST before using it
@@ -24,6 +25,8 @@ class UntimedCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'])
     def questions(self, request, pk=None):
         """Get questions for a specific category - with admin bypass"""
+        # Timed & untimed quizzes are for subscribers only (402 otherwise).
+        require_subscription(request.user, 'quiz')
         category = self.get_object()
         questions = category.untimed_questions.all()
         
@@ -87,6 +90,12 @@ class UntimedQuestionViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardResultsSetPagination
     filterset_fields = ['category']
     
+
+    def initial(self, request, *args, **kwargs):
+        # Timed & untimed quizzes are for subscribers only (402 otherwise).
+        super().initial(request, *args, **kwargs)
+        require_subscription(request.user, 'quiz')
+
     def list(self, request, *args, **kwargs):
         """List questions with admin bypass"""
         queryset = self.filter_queryset(self.get_queryset())
@@ -216,6 +225,8 @@ class UntimedQuestionViewSet(viewsets.ReadOnlyModelViewSet):
 @permission_classes([permissions.IsAuthenticated])
 def get_category_questions(request, category_id):
     """Get questions for a specific untimed quiz category - with admin bypass"""
+    # Timed & untimed quizzes are for subscribers only (402 otherwise).
+    require_subscription(request.user, 'quiz')
     category = get_object_or_404(UntimedCategory, id=category_id)
     questions = UntimedQuestion.objects.filter(category=category)
     
@@ -301,6 +312,8 @@ def get_category_questions(request, category_id):
 @permission_classes([permissions.IsAuthenticated])
 def submit_untimed_quiz(request):
     """Submit untimed quiz answers and calculate score - with admin bypass"""
+    # Timed & untimed quizzes are for subscribers only (402 otherwise).
+    require_subscription(request.user, 'quiz')
     data = request.data
     answers = data.get('answers', [])
     category_id = data.get('category_id')

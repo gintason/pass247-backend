@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import api from '../../api/client';
+import LockedContent from './LockedContent';
 
 /* ------------------------------------------------------------------
    Callout map — the panel types admins can use. Each type has its own
@@ -430,6 +431,7 @@ const StudyNotesViewer = ({ subjectName, subjectId }) => {
   const [notes, setNotes]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [locked, setLocked]   = useState(false); // 402: subscribers only
 
   useEffect(() => {
     if (invalidId) return;
@@ -445,7 +447,8 @@ const StudyNotesViewer = ({ subjectName, subjectId }) => {
       } catch (err) {
         console.error('Study notes fetch failed:', err);
         if (cancelled) return;
-        setError('Failed to load study notes');
+        if (err.response?.status === 402) setLocked(true);
+        else setError('Failed to load study notes');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -482,6 +485,15 @@ const StudyNotesViewer = ({ subjectName, subjectId }) => {
           Loading study notes for {subjectName || 'this subject'}…
         </p>
       </div>
+    );
+  }
+
+  /* ---------- Subscribers only ---------- */
+  if (locked) {
+    return (
+      <LockedContent
+        title="Study Notes are for subscribers"
+        message={`Subscribe to read the full colour-coded study notes for ${subjectName || 'this subject'}, plus syllabuses, past questions and unlimited practice.`} />
     );
   }
 

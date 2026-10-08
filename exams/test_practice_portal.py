@@ -193,6 +193,8 @@ class PickerTests(PortalBase):
         self.assertIn('jssce', [b['slug'] for b in res.json()['exam_bodies']])
 
     def test_past_questions_year_filter_and_full_year_list(self):
+        make_active_subscription(self.user)
+        self.login()
         res = self.client.get(f'/api/exams/past-questions/{self.subject.id}/',
                               {'exam_category': 'jssce', 'year': 2024})
         body = res.json()
@@ -231,6 +233,8 @@ class SyllabusTests(PortalBase):
         syllabus = form.save()
         self.assertIn('Number & Numeration', syllabus.content)
 
+        make_active_subscription(self.user)
+        self.login()
         res = self.client.get('/api/exams/syllabuses/', {'exam_category': 'jssce', 'subject': self.subject.id})
         item = res.json()['syllabuses'][0]
         self.assertEqual(item['title'], 'JSSCE Maths')

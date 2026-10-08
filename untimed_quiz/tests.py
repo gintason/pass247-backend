@@ -10,7 +10,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from untimed_quiz.models import UntimedCategory, UntimedQuestion
-from utils.factories import make_user, make_admin
+from utils.factories import make_subscriber, make_user, make_admin
 
 
 def iter_payload_dicts(payload):
@@ -50,13 +50,13 @@ class UntimedQuizAnswerLeakageTests(TestCase):
                 )
 
     def test_question_list_hides_answers(self):
-        self.client.force_authenticate(user=make_user())
+        self.client.force_authenticate(user=make_subscriber())
         self.assertNoAnswers(
             self.client.get('/api/untimed-quiz/questions/'), 'question list'
         )
 
     def test_category_questions_hides_answers(self):
-        self.client.force_authenticate(user=make_user())
+        self.client.force_authenticate(user=make_subscriber())
         self.assertNoAnswers(
             self.client.get(f'/api/untimed-quiz/categories/{self.category.pk}/questions/'),
             'category questions',

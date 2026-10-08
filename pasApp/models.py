@@ -95,3 +95,20 @@ class InterviewBookmark(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.interview.question[:50]}"
+
+class InterviewAccess(models.Model):
+    """
+    Interview answers a free (non-subscribed) user has opened. Free users can
+    read FREE_INTERVIEW_LIMIT (10) answers in total; subscribers read all.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='interview_accesses')
+    interview = models.ForeignKey(Interview, on_delete=models.CASCADE, related_name='free_accesses')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['user', 'interview']
+        verbose_name = 'Free interview answer opened'
+        verbose_name_plural = 'Free interview answers opened'
+
+    def __str__(self):
+        return f"{self.user} - {self.interview_id}"
